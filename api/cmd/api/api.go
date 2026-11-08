@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/http/httputil"
 	"strings"
 	"time"
 	"os"
@@ -16,6 +15,7 @@ import (
 	"chat-gobelin-api/internal/users"
 	"chat-gobelin-api/internal/channels"
 	"chat-gobelin-api/internal/messages"
+	"chat-gobelin-api/internal/letters"
 	"chat-gobelin-api/internal"
 
 	"github.com/gorilla/mux"
@@ -26,7 +26,42 @@ type authenticationMiddleware struct {
 	Repo users.Repo
 }
 
+// Routes ouvertes sans token, méthode comprise : inscription, connexion, et lecture seule des salons et des
+// utilisateurs (ils servent de décor, le système solaire, derrière le formulaire de connexion).
+// Tout le reste exige un token : ajouter une route ici est un choix de sécurité, à faire exprès.
+var publicRoutes = map[string]bool{
+	http.MethodPost + " /login":    true,
+	http.MethodPost + " /user":     true,
+	http.MethodGet + " /user":      true,
+	http.MethodGet + " /users":     true,
+	http.MethodGet + " /channel":   true,
+	http.MethodGet + " /channels":  true,
+}
+
 func main() {
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		log.Fatal("JWT_SECRET is required (secret used to sign the login tokens)")
+	}
+	handlers.JWTKey = []byte(secret)
+
+	rules, err := letters.RulesFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Letter rules: %+v", rules)
+
+	// ADMIN_USERNAMES : noms d'utilisateur (séparés par des virgules) autorisés à créer et supprimer salons et utilisateurs.
+	admins := map[string]bool{}
+	for _, name := range strings.Split(os.Getenv("ADMIN_USERNAMES"), ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			admins[name] = true
+		}
+	}
+	if len(admins) == 0 {
+		log.Printf("WARNING: ADMIN_USERNAMES is empty, nobody can create a channel")
+	}
+
 	//TODO: deal with environments
 	db, err := internal.GetDevDB()
 
@@ -56,7 +91,7 @@ func main() {
 
 	internalUser, err := userRepo.GetByUserName(ctx, "internal-clock")
 	if err != nil {
-		internalUser, err = userRepo.Create(ctx, "internal-clock", []byte("111111111"))
+		internalUser, err = userRepo.Create(ctx, "internal-clock", []byte("111111111"), users.Planet{Color: "#8d9db6", Size: 0.55})
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -65,7 +100,7 @@ func main() {
 
 	generalChannel, _ := channelRepo.GetByName(ctx, "general")
 	if generalChannel == nil {
-		generalChannel, err = channelRepo.Create(ctx, "general")
+		generalChannel, err = channelRepo.Create(ctx, "general", nil)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -90,17 +125,17 @@ func main() {
 		}
 	}()
 
-	userHandler, err := handlers.NewUserHandler(userRepo, channelRepo, *generalChannel)
+	userHandler, err := handlers.NewUserHandler(userRepo, channelRepo, *generalChannel, admins)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	channelHandler, err := handlers.NewChannelHandler(channelRepo, userRepo)
+	channelHandler, err := handlers.NewChannelHandler(channelRepo, userRepo, admins)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	messageHandler, err := handlers.NewMessageHandler(messageRepo)
+	messageHandler, err := handlers.NewMessageHandler(messageRepo, channelRepo, letters.NewService(db, rules))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -114,12 +149,19 @@ func main() {
 	router.Use(setAccessControlHeader)
 	router.Use(amw.authMiddleware)
 
+	router.HandleFunc("/users", userHandler.GetAll).Methods(http.MethodGet)
+	router.HandleFunc("/user", userHandler.GetAll).Methods(http.MethodGet)
+
 	router.HandleFunc("/login", userHandler.Login).Methods(http.MethodPost)
 	router.HandleFunc("/user", userHandler.Create).Methods(http.MethodPost)
+	router.HandleFunc("/user", userHandler.Delete).Methods(http.MethodDelete)
 	router.HandleFunc("/me", userHandler.Me).Methods(http.MethodGet)
-	/*router.HandleFunc("/channel", channelHandler.Get).Methods(http.MethodGet)*/
+	router.HandleFunc("/channel", channelHandler.GetAll).Methods(http.MethodGet)
+  router.HandleFunc("/channels", channelHandler.GetAll).Methods(http.MethodGet)
 	router.HandleFunc("/channel", channelHandler.Create).Methods(http.MethodPost)
+	router.HandleFunc("/channel", channelHandler.Delete).Methods(http.MethodDelete)
 	router.HandleFunc("/channel/enter", channelHandler.EnterChannel).Methods(http.MethodPost)
+	router.HandleFunc("/channel/system", messageHandler.System).Methods(http.MethodGet)
 	router.HandleFunc("/channel/message", messageHandler.GetMessages).Methods(http.MethodGet)
 	router.HandleFunc("/channel/message", messageHandler.CreateMessage).Methods(http.MethodPost)
 	router.Methods(http.MethodOptions).HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -133,9 +175,8 @@ func main() {
 
 func logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reqDump, _ := httputil.DumpRequest(r, true)
-		log.Printf("REQUEST:\n%s", string(reqDump))
-		// Extract claims and pass to next handler
+		// Ni le corps (mots de passe) ni les en-têtes (token) ne doivent finir dans les logs.
+		log.Printf("REQUEST: %s %s", r.Method, r.URL.RequestURI())
 		next.ServeHTTP(w, r)
 	})
 }
@@ -151,8 +192,7 @@ func setAccessControlHeader(next http.Handler) http.Handler {
 
 func (amw *authenticationMiddleware) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		//No auth required for login
-		if strings.TrimPrefix(r.URL.Path, "/") == "login" || strings.TrimPrefix(r.URL.Path, "/") == "user" {
+		if publicRoutes[r.Method+" "+r.URL.Path] {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -178,8 +218,11 @@ func (amw *authenticationMiddleware) authMiddleware(next http.Handler) http.Hand
 		claims := token.Claims.(*handlers.Claims)
 		log.Printf("token have %s and %d", claims.Username, claims.ID)
 		currentUser, err := amw.Repo.GetByID(r.Context(), claims.ID)
-		if err != nil  {
+		if err != nil {
+			// Token valide mais utilisateur introuvable (supprimé) : on ne continue pas avec un utilisateur vide.
 			log.Printf("Error retrieving user: %s", err.Error())
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
 		}
 		ctx := context.WithValue(r.Context(), "user", currentUser)
 		next.ServeHTTP(w, r.WithContext(ctx))

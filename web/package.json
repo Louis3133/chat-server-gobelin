@@ -3,28 +3,23 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "lint": "eslint . --fix --ignore-path .gitignore"
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview"
   },
   "dependencies": {
     "@mdi/font": "7.0.96",
-    "axios": "^1.3.4",
-    "core-js": "^3.8.3",
-    "roboto-fontface": "*",
+    "nuxt": "^4.6.3",
+    "three": "^0.187.0",
+    "tweakpane": "^4.0.5",
     "vue": "^3.2.13",
     "vue-router": "^4.0.0",
-    "vuetify": "^3.0.0",
-    "vuex": "^4.1.0",
-    "webfontloader": "^1.0.0"
+    "vuetify": "^3.0.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^3.0.3",
-    "eslint": "^8.22.0",
-    "eslint-plugin-vue": "^9.3.0",
+    "@tweakpane/core": "^2.0.5",
     "sass": "^1.55.0",
-    "vite": "^4.1.4",
-    "vite-plugin-vuetify": "^1.0.0-alpha.12"
+    "vuetify-nuxt-module": "1.0.0-rc.6"
   }
 }

@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 
@@ -12,12 +14,14 @@ import (
 type channelHandler struct {
 	channelRepo channels.Repo
 	userRepo users.Repo
+	admins map[string]bool // noms d'utilisateur autorisés à créer et supprimer un salon (ADMIN_USERNAMES)
 }
 
-func NewChannelHandler(s channels.Repo, u users.Repo) (*channelHandler, error) {
+func NewChannelHandler(s channels.Repo, u users.Repo, admins map[string]bool) (*channelHandler, error) {
 	return &channelHandler{
 		channelRepo: s,
 		userRepo: u,
+		admins: admins,
 	}, nil
 }
 
@@ -32,11 +36,8 @@ type EnterChannelRequest struct {
 func (h channelHandler) Create(writer http.ResponseWriter, request *http.Request) {
 	ctx := request.Context()
 
-	userRaw := ctx.Value("user")
-	user := userRaw.(*users.User)
-	if user == nil {
-		log.Printf("No user found")
-		writer.WriteHeader(http.StatusInternalServerError)
+	user, ok := currentUser(writer, request)
+	if !ok {
 		return
 	}
 
@@ -51,7 +52,18 @@ func (h channelHandler) Create(writer http.ResponseWriter, request *http.Request
 		return
 	}
 
-	channel, err := h.channelRepo.Create(ctx, req.Name)
+	// Seul un admin crée un salon (un soleil) : sans admin configuré, personne ne peut.
+	if !h.admins[user.Username] {
+		log.Printf("User %s tried to create a channel without being admin", user.Username)
+		http.Error(writer, "Forbidden", http.StatusForbidden)
+		return
+	}
+	if req.Name == "" {
+		http.Error(writer, "name required", http.StatusBadRequest)
+		return
+	}
+
+	channel, err := h.channelRepo.Create(ctx, req.Name, &user.ID)
 	if err != nil {
 		log.Printf("Error creating channel: %s", err.Error())
 		writer.WriteHeader(http.StatusInternalServerError)
@@ -78,11 +90,8 @@ func (h channelHandler) Create(writer http.ResponseWriter, request *http.Request
 func (h channelHandler) EnterChannel(writer http.ResponseWriter, request *http.Request) {
 	ctx := request.Context()
 
-	userRaw := ctx.Value("user")
-	user := userRaw.(*users.User)
-	if user == nil {
-		log.Printf("No user found")
-		writer.WriteHeader(http.StatusInternalServerError)
+	user, ok := currentUser(writer, request)
+	if !ok {
 		return
 	}
 
@@ -119,4 +128,77 @@ func (h channelHandler) EnterChannel(writer http.ResponseWriter, request *http.R
 	}
 	writer.WriteHeader(http.StatusOK)
 	writer.Write(result)
+}
+
+func (h channelHandler) GetAll(writer http.ResponseWriter, request *http.Request) {
+  ctx := request.Context()
+
+  // 1. Récupère tous les salons depuis la BDD via le repo
+  channelList, err := h.channelRepo.GetAllChannels(ctx)
+  if err != nil {
+    log.Printf("Error retrieving all channels: %s", err.Error())
+    writer.WriteHeader(http.StatusInternalServerError)
+    return
+  }
+
+  // 2. Encode la liste en JSON
+  result, err := json.Marshal(channelList)
+  if err != nil {
+    log.Printf("Error marshaling channels: %s", err.Error())
+    writer.WriteHeader(http.StatusInternalServerError)
+    return
+  }
+
+  // 3. Renvoie la réponse avec le statut 200 OK
+  writer.Header().Set("Content-Type", "application/json")
+  writer.WriteHeader(http.StatusOK)
+  writer.Write(result)
+}
+
+// Delete : DELETE /channel?channel=ID, admins uniquement, general protégé
+func (h channelHandler) Delete(writer http.ResponseWriter, request *http.Request) {
+	ctx := request.Context()
+
+	user, ok := currentUser(writer, request)
+	if !ok {
+		return
+	}
+	if !h.admins[user.Username] {
+		log.Printf("User %s tried to delete a channel without being admin", user.Username)
+		http.Error(writer, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	channelID, ok := channelIDFromQuery(writer, request)
+	if !ok {
+		return
+	}
+
+	channel, err := h.channelRepo.GetByID(ctx, channelID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(writer, "Channel not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("Error finding channel: %s", err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if channel.Name == "general" {
+		http.Error(writer, "The general channel cannot be deleted", http.StatusBadRequest)
+		return
+	}
+
+	err = h.channelRepo.Delete(ctx, channelID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(writer, "Channel not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("Error deleting channel: %s", err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	log.Printf("Channel %d deleted by %s", channelID, user.Username)
+	writer.WriteHeader(http.StatusNoContent)
 }

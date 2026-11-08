@@ -7,6 +7,9 @@ services:
       context: ./web
     volumes:
       - ./web:/app
+      # node_modules et .nuxt du conteneur (Linux) ne se mélangent pas avec ceux du poste (macOS)
+      - /app/node_modules
+      - /app/.nuxt
     ports:
       - 8080:8080
     links:
@@ -20,6 +23,14 @@ services:
     ports:
       - 4000:4000
     restart: always
+    environment:
+      # Secret de signature des tokens : à définir (variable JWT_SECRET) hors développement.
+      - JWT_SECRET=${JWT_SECRET:-dev-only-secret-change-me}
+      # Qui peut créer un salon (un soleil) : noms d'utilisateur séparés par des virgules. Vide : personne.
+      - ADMIN_USERNAMES=${ADMIN_USERNAMES:-}
+      # Règles des lettres (voir api/internal/letters/letters.md). 1 = temps réel ; 3600 = une heure simulée dure
+      # une seconde (démo).
+      - LETTER_TIME_SCALE=${LETTER_TIME_SCALE:-1}
     depends_on:
       db:
         condition: service_healthy

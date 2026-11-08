@@ -1,0 +1,2 @@
+# Réglages locaux (secrets, admins) : voir .env.example
+.env

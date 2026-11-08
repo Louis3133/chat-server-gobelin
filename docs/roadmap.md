@@ -1,0 +1,58 @@
+# Roadmap
+
+Une étape = une session de travail courte. Cocher quand c'est terminé. Lire `docs/concept.md` avant de commencer.
+
+## 0. Hygiène du dépôt
+- [x] Ignorer `web/node_modules` et les dossiers générés (`web/.gitignore`)
+- [ ] Retirer le binaire `api/api` de l'index et l'ajouter à `api/.gitignore`
+- [ ] Retirer le JWT de `memory_help.txt`
+- [ ] Commit de nettoyage séparé du reste
+- [ ] Formater le Go (`gofmt`) sur les fichiers modifiés
+
+## 1. Sécurité de base de l'API
+- [x] Corriger l'exemption d'auth par méthode (`publicRoutes` dans `api.go`) et répondre 401 si l'utilisateur du token n'existe plus
+- [x] `GET /users` et `GET /channels` restent publics, par choix (décor du formulaire de connexion)
+- [x] `JWT_SECRET` (obligatoire) et `DATABASE_URL` (optionnelle) en variables d'environnement
+- [x] Plus de mots de passe, tokens ni corps de requête dans les logs
+- [x] Vérifier l'appartenance au salon sur `GET` et `POST /channel/message`
+- [x] Contrainte d'unicité sur `user_channels` (migration 00003, `POST /channel/enter` idempotent)
+
+## 2. Modèle de données du concept
+- [x] Décisions de `docs/concept.md` : valeurs par défaut adoptées (voir ce fichier), réglables sans toucher au code
+- [x] Migration 00002 : `recipient_id` et `deliver_at` sur `messages`
+- [x] Migration 00002 : `owner_id` sur les channels (admin)
+- [x] Migration 00002 : table `relations` (distance par paire et par channel, `user_a < user_b`)
+- [x] Adapter les repos Go (`messages`, `channels`) aux nouvelles colonnes
+
+## 3. Logique de lettres (API)
+- [x] Calcul du délai à partir de la distance, avec facteur d'échelle configurable (`internal/letters/rules.go`)
+- [x] `POST /channel/message` avec destinataire et `deliver_at`
+- [x] `GET /channel/message` filtré sur la livraison (contenu masqué tant que la lettre est en route)
+- [x] Mise à jour de la distance à chaque réponse
+- [x] Endpoint `GET /channel/system?channel=ID` pour la scène (distances de l'utilisateur uniquement)
+- [x] Création de salon réservée aux admins (`ADMIN_USERNAMES`), propriétaire = `owner_id`
+- [x] Mettre à jour les `*.md` de l'API (`letters.md`, `message.md`, `channel.md`)
+- [ ] Remontée de la distance quand on cesse de s'écrire (hors MVP)
+- [ ] Tests automatisés de `service.go` (SQL) : aujourd'hui seulement des essais manuels sur Postgres jetable
+- [ ] Lettres de groupe : non (les messages de salon sans destinataire restent livrés tout de suite)
+
+## 4. Front fonctionnel sans 3D
+- [x] Supprimer `web/src/` et les restes de l'appli de virements
+- [x] Unifier le token sur `useChatApi` (`chat_goblin_token`)
+- [x] Pages : login/inscription, liste des channels, boîte de lettres, envoi d'une lettre
+- [x] Corriger le `Dockerfile` web et le port pour Nuxt (Node 22, port 8080, volumes anonymes pour `node_modules` et `.nuxt`)
+- [ ] Essai de bout en bout dans le navigateur (`docker compose up --build`) : seul `nuxt build` a été vérifié
+- [x] Dépendances Vite/Vuex/axios/eslint retirées de `web/package.json`, `yarn.lock` supprimé : npm uniquement
+
+## 5. Scène Three.js
+- [x] Soleil, planètes et orbites à partir de `/system`
+- [x] Sélection d'une planète et ouverture de la conversation
+- [x] Animation des lettres en transit
+- [x] Rapprochement visible des planètes (la planète glisse vers sa nouvelle place au rechargement ; pas encore de rafraîchissement automatique, cf. étape 6)
+- [x] Scène plein écran en fond dès la page de connexion (décor des habitants publics, caméra libre, étoiles)
+- [ ] Essai visuel dans le navigateur de la scène : seul `nuxt build` a été vérifié
+
+## 6. Finitions
+- [ ] Temps réel (polling puis WebSocket si besoin)
+- [ ] Textures, sons, polish visuel
+- [ ] Mode démo avec temps accéléré

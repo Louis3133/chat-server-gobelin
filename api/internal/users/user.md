@@ -70,3 +70,13 @@ Return relevant informations about the currently logged in user.
 username is the name of the logged in user
 id is the internal ID of the logged in user
 channel is the list of channel the user is in
+
+`/me` renvoie aussi `is_admin` (le nom fait partie de `ADMIN_USERNAMES`) : le front s'en sert pour afficher l'administration.
+
+## Delete User
+DELETE **/user?user=ID**
+
+**Réservé aux admins** (`ADMIN_USERNAMES`) : 403 sinon. Supprime l'utilisateur avec ses lettres envoyées et reçues, ses
+adhésions et ses distances, dans une transaction ; les salons qu'il possédait gardent leur contenu (`owner_id` à `null`).
+Son token devient invalide (401). 400 pour `internal-clock` (protégé : l'horloge écrit en son nom), 404 s'il n'existe pas.
+Réponse : 204 sans contenu.

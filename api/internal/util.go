@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 
 	"github.com/jackc/pgx/v5"
@@ -14,7 +15,11 @@ import (
 )
 
 func GetDevDB() (*sqlx.DB, error) {
-	db, err := GetDB("postgres://postgres:postgres@db:5432/chat-goblin-db?sslmode=disable")
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://postgres:postgres@db:5432/chat-goblin-db?sslmode=disable" // dev (docker compose)
+	}
+	db, err := GetDB(dsn)
 	if err != nil {
 		return db, fmt.Errorf("development DB retrieval: %w", err)
 	}
@@ -70,7 +75,7 @@ func MigrateDB(db *sqlx.DB, migration string) error {
 		return fmt.Errorf("Error migrating the DB: %s", err.Error())
 	}
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("Error changing DB version", err)
+		return fmt.Errorf("Error changing DB version: %w", err)
 	}
 	return nil
 }
