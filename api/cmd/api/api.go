@@ -96,7 +96,7 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	log.Printf("User: %v", internalUser)
+	log.Printf("Internal user: %s (id %d)", internalUser.Username, internalUser.ID)
 
 	generalChannel, _ := channelRepo.GetByName(ctx, "general")
 	if generalChannel == nil {
@@ -168,8 +168,12 @@ func main() {
 		writer.WriteHeader(http.StatusOK)
 	}).Methods(http.MethodOptions)
 
-	log.Println("Application has started. Listening port is 4000")
-	http.ListenAndServe(":4000", router)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "4000"
+	}
+	log.Printf("Application has started. Listening port is %s", port)
+	log.Fatal(http.ListenAndServe(":"+port, router))
 
 }
 
