@@ -9,6 +9,9 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { Line2 } from 'three/addons/lines/Line2.js'
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js'
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js'
 import { Pane, type FolderApi } from 'tweakpane'
 import * as TweakpanePluginMedia from 'tweakpane-plugin-media'
 
@@ -43,8 +46,25 @@ const debug = useState<boolean>('debug', () => false).value
 const tweaks = {
   sunSize: 1,
   pixelSize: 3,
-  rocketSize: 1,
-  smokeSize: 0.14,
+  rocketSize: 0.4,
+  smokeSize: 0.04,
+  landing: 0.2,
+  haloWidth: 0.28,
+  haloColor: '#bfe6ff',
+  haloOpacity: 0.35,
+  background: '#05060f',
+  orbitColor: '#445566',
+  orbitWidth: 1,
+  orbitOpacity: 0.5,
+  starCount: 1500,
+  starSize: 2,
+  starColor: '#ffffff',
+  starBrightness: 0.4,
+  twinkleAmount: 1,
+  twinkleSpeed: 1,
+  shootingRate: 4,
+  shootingSize: 2,
+  shootingSpeed: 1,
 }
 let pane: Pane | undefined
 let planetsFolder: FolderApi | undefined
@@ -195,13 +215,68 @@ const smokeGeometry = new THREE.BufferGeometry()
 smokeGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(SMOKE_MAX * 3), 3))
 smokeGeometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(SMOKE_MAX * 4), 4))
 const smoke = new THREE.Points(smokeGeometry, new THREE.PointsMaterial({
-  size: 0.14,
+  size: tweaks.smokeSize,
   vertexColors: true,
   transparent: true,
   depthWrite: false,
 }))
 smoke.frustumCulled = false
 const TAIL = new THREE.Vector3(0, 0, -ROCKET_LENGTH / 2)
+
+// Vol : décollage depuis la surface, arc, puis vol stationnaire, retournement et atterrissage sur la queue
+const ROCKET_ARC = 0.35
+const ROCKET_LIFT = 0.8
+const HOVER_AT = 0.85
+const NOSE = new THREE.Vector3(0, 0, 1)
+const landSpots = new Map<string, THREE.Vector3>()
+
+// Décalage propre à chaque lettre : deux fusées vers la même planète ne se posent pas au même endroit
+const LAND_SPREAD = 0.9
+const spreadOf = (key: string) => {
+  let h = 0
+  for (const c of key) h = (h * 31 + c.charCodeAt(0)) % 100000
+  return new THREE.Vector3(rand(h, 7) - 0.5, (rand(h, 8) - 0.5) * 0.5, rand(h, 9) - 0.5).multiplyScalar(LAND_SPREAD)
+}
+const smooth = (t: number) => t * t * (3 - 2 * t)
+const clamp01 = (t: number) => THREE.MathUtils.clamp(t, 0, 1)
+const surfaceOf = (mesh: THREE.Mesh) => (mesh.geometry as THREE.SphereGeometry).parameters.radius * mesh.scale.x
+
+const fly = (rocket: THREE.Object3D, from: THREE.Mesh, to: THREE.Mesh, progress: number) => {
+  const half = (ROCKET_LENGTH / 2) * tweaks.rocketSize
+  const landing = tweaks.landing
+  const cruiseEnd = 1 - landing
+  const dir = to.position.clone().sub(from.position).normalize()
+  const launch = dir.clone().addScaledVector(UP, ROCKET_LIFT).normalize()
+
+  // Point d'atterrissage accroché à la planète dès la phase d'atterrissage : il tourne avec elle
+  let land = dir.clone().negate().addScaledVector(UP, ROCKET_LIFT).add(spreadOf(rocket.userData.key)).normalize()
+  let landed = new THREE.Quaternion().setFromUnitVectors(NOSE, land)
+  if (progress >= cruiseEnd) {
+    const key = rocket.userData.key
+    if (!landSpots.has(key)) landSpots.set(key, land.clone().applyQuaternion(to.quaternion.clone().invert()))
+    const spot = landSpots.get(key)!
+    land = spot.clone().applyQuaternion(to.quaternion)
+    landed = to.quaternion.clone().multiply(new THREE.Quaternion().setFromUnitVectors(NOSE, spot))
+  }
+
+  const start = from.position.clone().addScaledVector(launch, surfaceOf(from) + half)
+  const end = to.position.clone().addScaledVector(land, surfaceOf(to) + half)
+  const reach = start.distanceTo(end) * ROCKET_ARC
+  const path = new THREE.CubicBezierCurve3(
+    start,
+    start.clone().addScaledVector(launch, reach),
+    end.clone().addScaledVector(land, reach),
+    end,
+  )
+
+  const descent = clamp01((progress - cruiseEnd) / Math.max(landing, 0.001))
+  const s = progress < cruiseEnd
+    ? HOVER_AT * smooth(progress / cruiseEnd)
+    : HOVER_AT + (1 - HOVER_AT) * smooth(descent)
+  rocket.position.copy(path.getPoint(s))
+  const heading = new THREE.Quaternion().setFromUnitVectors(NOSE, path.getTangent(Math.min(s, 0.999)))
+  rocket.quaternion.copy(heading).slerp(landed, smooth(clamp01(descent / 0.5)))
+}
 
 const puff = (rocket: THREE.Object3D, now: number) => {
   rocket.updateMatrixWorld()
@@ -239,10 +314,48 @@ const animateSmoke = (now: number) => {
   positions.needsUpdate = true
   colors.needsUpdate = true
 }
-const selectionRing = new THREE.Mesh(
-  new THREE.RingGeometry(0.6, 0.7, 48),
-  new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }),
-)
+// Halo pixelisé autour de la planète sélectionnée : anneau lumineux par paliers
+const HALO_SIZE = 2.9
+const HALO_STEPS = 4
+const makeHaloTexture = (width: number) => {
+  const n = 32
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = n
+  const ctx = canvas.getContext('2d')!
+  const image = ctx.createImageData(n, n)
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const d = Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2) / (n / 2)
+      const glow = d < 0.72 ? Math.max(0, 1 - (0.72 - d) / 0.08) : Math.max(0, 1 - (d - 0.72) / width)
+      const alpha = Math.round(glow * HALO_STEPS) / HALO_STEPS
+      image.data.set([255, 255, 255, alpha * 255], (y * n + x) * 4)
+    }
+  }
+  ctx.putImageData(image, 0, 0)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.magFilter = THREE.NearestFilter
+  texture.minFilter = THREE.NearestFilter
+  return texture
+}
+const selectionHalo = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: makeHaloTexture(tweaks.haloWidth),
+  color: tweaks.haloColor,
+  opacity: tweaks.haloOpacity,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+}))
+selectionHalo.visible = false
+
+const updateHalo = () => {
+  const material = selectionHalo.material
+  material.map?.dispose()
+  material.map = makeHaloTexture(tweaks.haloWidth)
+  material.color.set(tweaks.haloColor)
+  material.opacity = tweaks.haloOpacity
+  material.needsUpdate = true
+}
+
 const hoverRing = new THREE.Mesh(
   new THREE.RingGeometry(0.85, 1, 48),
   new THREE.MeshBasicMaterial({ color: 0xffd54f, side: THREE.DoubleSide }),
@@ -472,6 +585,15 @@ const activeSunAt = (event: MouseEvent) => {
   return props.selectedId != null && !!sun && rayAt(event).intersectObject(sun, false).length > 0
 }
 
+// Orbites : une matière partagée, épaisseur en pixels
+const orbitMaterial = new LineMaterial({ transparent: true, depthWrite: false })
+const updateOrbits = () => {
+  orbitMaterial.color.set(tweaks.orbitColor)
+  orbitMaterial.linewidth = tweaks.orbitWidth
+  orbitMaterial.opacity = tweaks.orbitOpacity
+}
+updateOrbits()
+
 // Synchronisation avec les données
 const syncSystem = () => {
   if (!ready) return
@@ -566,20 +688,24 @@ const syncPlanet = (
     planets.set(k, node)
   }
   node.target.copy(t.pos)
-  const ring = new THREE.LineLoop(
-    new THREE.BufferGeometry().setFromPoints(new THREE.Path().absarc(0, 0, t.radius, 0, Math.PI * 2).getSpacedPoints(128)),
-    new THREE.LineBasicMaterial({ color: 0x445566, transparent: true, opacity: 0.5 }),
-  )
+  const points = new THREE.Path().absarc(0, 0, t.radius, 0, Math.PI * 2).getSpacedPoints(128)
+  const ring = new Line2(new LineGeometry().setPositions(points.flatMap((v) => [v.x, v.y, 0])), orbitMaterial)
   ring.rotation.x = Math.PI / 2 - t.tilt
   rings.add(ring)
 }
 
 // Lettres en transit
+const LANDED_MAX = 30
+
 const syncLetters = () => {
   if (!ready) return
   letters.clear()
-  for (const m of props.messages) {
-    if (!m.in_transit || !m.recipient_id) continue
+  const sent = props.messages.filter((m) => m.recipient_id)
+  const landed = sent
+    .filter((m) => !m.in_transit)
+    .sort((a, b) => new Date(b.deliver_at).getTime() - new Date(a.deliver_at).getTime())
+    .slice(0, LANDED_MAX)
+  for (const m of [...sent.filter((m) => m.in_transit), ...landed]) {
     const from = planets.get(`${activeKey}:${m.user_id}`)
     const to = planets.get(`${activeKey}:${m.recipient_id}`)
     if (!from || !to) continue
@@ -645,9 +771,8 @@ const animate = () => {
   for (const dot of letters.children) {
     const { from, to, start, end } = dot.userData
     const progress = progressOf(start, end, now)
-    dot.position.lerpVectors(from.position, to.position, progress)
     dot.scale.setScalar(tweaks.rocketSize)
-    dot.lookAt(to.position)
+    fly(dot, from, to, progress)
     if (rocketModel && progress < 1 && now - dot.userData.lastPuff >= SMOKE_EVERY) {
       dot.userData.lastPuff = now
       puff(dot, now)
@@ -656,11 +781,10 @@ const animate = () => {
   ;(smoke.material as THREE.PointsMaterial).size = tweaks.smokeSize
   animateSmoke(now)
   const selected = props.selectedId != null ? planets.get(`${activeKey}:${props.selectedId}`) : undefined
-  selectionRing.visible = !!selected
+  selectionHalo.visible = !!selected
   if (selected) {
-    selectionRing.position.copy(selected.mesh.position)
-    selectionRing.scale.setScalar(selected.mesh.scale.x)
-    selectionRing.quaternion.copy(camera.quaternion)
+    selectionHalo.position.copy(selected.mesh.position)
+    selectionHalo.scale.setScalar(surfaceOf(selected.mesh) * HALO_SIZE * (1 + Math.sin(now / 400) * 0.02))
   }
   for (const [key, group] of suns) {
     const sun = group.children[0]
@@ -691,7 +815,9 @@ const resize = () => {
   if (!el) return
   renderer.setPixelRatio(1 / tweaks.pixelSize)
   renderer.setSize(el.clientWidth, el.clientHeight)
-  starMaterial.uniforms.scale.value = renderer.getDrawingBufferSize(new THREE.Vector2()).y / 2
+  const buffer = renderer.getDrawingBufferSize(new THREE.Vector2())
+  starMaterial.uniforms.scale.value = buffer.y / 2
+  orbitMaterial.resolution.copy(buffer)
   labelRenderer.setSize(el.clientWidth, el.clientHeight)
   camera.aspect = el.clientWidth / el.clientHeight
   camera.updateProjectionMatrix()
@@ -726,32 +852,55 @@ const onClick = (event: MouseEvent) => {
 
 // Étoiles : chacune scintille doucement à son rythme
 const starMaterial = new THREE.ShaderMaterial({
-  uniforms: { time: { value: 0 }, size: { value: 2 }, scale: { value: 1 } },
+  uniforms: {
+    time: { value: 0 },
+    size: { value: tweaks.starSize },
+    scale: { value: 1 },
+    color: { value: new THREE.Color(tweaks.starColor) },
+    brightness: { value: tweaks.starBrightness },
+    twinkle: { value: tweaks.twinkleAmount },
+    speed: { value: tweaks.twinkleSpeed },
+  },
   vertexShader: `
     attribute float phase;
     uniform float time;
     uniform float size;
     uniform float scale;
+    uniform float brightness;
+    uniform float twinkle;
+    uniform float speed;
     varying float vLight;
     void main() {
       vec4 mv = modelViewMatrix * vec4(position, 1.0);
-      float speed = 1.2 + fract(phase * 7.31) * 2.8;
-      float flash = pow(0.5 + 0.5 * sin(time * speed + phase * 6.2831), 6.0);
-      vLight = 0.4 + 0.6 * flash;
+      float rate = (1.2 + fract(phase * 7.31) * 2.8) * speed;
+      float flash = pow(0.5 + 0.5 * sin(time * rate + phase * 6.2831), 6.0) * twinkle;
+      vLight = brightness + (1.0 - brightness) * flash;
       gl_PointSize = size * (scale / -mv.z) * (1.0 + flash);
       gl_Position = projectionMatrix * mv;
     }
   `,
   fragmentShader: `
+    uniform vec3 color;
     varying float vLight;
     void main() {
-      gl_FragColor = vec4(vec3(vLight), 1.0);
+      gl_FragColor = vec4(color * vLight, 1.0);
     }
   `,
 })
 
+const updateStars = () => {
+  const u = starMaterial.uniforms
+  u.size.value = tweaks.starSize
+  u.color.value.set(tweaks.starColor)
+  u.brightness.value = tweaks.starBrightness
+  u.twinkle.value = tweaks.twinkleAmount
+  u.speed.value = tweaks.twinkleSpeed
+  stars?.geometry.setDrawRange(0, tweaks.starCount)
+}
+
+const STARS_MAX = 8000
 const makeStars = () => {
-  const count = 1500
+  const count = STARS_MAX
   const positions = new Float32Array(count * 3)
   const phases = new Float32Array(count)
   for (let i = 0; i < count; i++) {
@@ -762,6 +911,7 @@ const makeStars = () => {
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
   geometry.setAttribute('phase', new THREE.BufferAttribute(phases, 1))
+  geometry.setDrawRange(0, tweaks.starCount)
   return new THREE.Points(geometry, starMaterial)
 }
 
@@ -780,7 +930,7 @@ const launchShootingStar = (now: number) => {
   const fade = Array.from({ length: SHOOTING_STAR_DOTS }, (_, i) => (1 - i / SHOOTING_STAR_DOTS) ** 2)
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(fade.flatMap((f) => [f, f, f]), 3))
   const trail = new THREE.Points(geometry, new THREE.PointsMaterial({
-    size: 2,
+    size: tweaks.shootingSize,
     sizeAttenuation: false,
     vertexColors: true,
     transparent: true,
@@ -793,7 +943,7 @@ const launchShootingStar = (now: number) => {
     dir,
     born: now,
     life: 900 + Math.random() * 600,
-    speed: 0.2 + Math.random() * 0.1,
+    speed: (0.2 + Math.random() * 0.1) * tweaks.shootingSpeed,
     length: 150 + Math.random() * 70,
   }
   shootingStars.add(trail)
@@ -801,8 +951,8 @@ const launchShootingStar = (now: number) => {
 
 const animateShootingStars = (now: number) => {
   if (now >= nextShootingStar) {
-    if (nextShootingStar) launchShootingStar(now)
-    nextShootingStar = now + 8000 + Math.random() * 12000
+    if (nextShootingStar && tweaks.shootingRate > 0) launchShootingStar(now)
+    nextShootingStar = now + (60000 / Math.max(tweaks.shootingRate, 0.5)) * (0.5 + Math.random())
   }
   for (const trail of [...shootingStars.children] as THREE.Points[]) {
     const { start, dir, born, life, speed, length } = trail.userData
@@ -830,7 +980,7 @@ const animateShootingStars = (now: number) => {
 onMounted(() => {
   const el = container.value!
   scene = new THREE.Scene()
-  scene.background = new THREE.Color(0x05060f)
+  scene.background = new THREE.Color(tweaks.background)
   camera = new THREE.PerspectiveCamera(50, el.clientWidth / el.clientHeight, 0.1, 2000)
   camera.position.copy(viewDirection(cameraViews.overview)).multiplyScalar(channelDistance())
   renderer = new THREE.WebGLRenderer({ antialias: false })
@@ -848,7 +998,7 @@ onMounted(() => {
   controls.maxPolarAngle = Math.PI * 0.49
 
   stars = makeStars()
-  scene.add(stars, shootingStars, new THREE.AmbientLight(0xffffff, 1.5), orbits, letters, smoke, selectionRing, hoverRing)
+  scene.add(stars, shootingStars, new THREE.AmbientLight(0xffffff, 1.5), orbits, letters, smoke, selectionHalo, hoverRing)
   loadRocket()
 
   renderer.domElement.addEventListener('pointerdown', onPointerDown)
@@ -864,10 +1014,45 @@ onMounted(() => {
 
   if (debug) {
     pane = new Pane({ title: 'Réglages', container: tweaksEl.value })
-    pane.addBinding(tweaks, 'sunSize', { label: 'Soleil', min: 0.3, max: 2.4, step: 0.05 })
-    pane.addBinding(tweaks, 'pixelSize', { label: 'Pixels', min: 1, max: 6, step: 1 }).on('change', resize)
-    pane.addBinding(tweaks, 'rocketSize', { label: 'Fusée', min: 0.2, max: 2, step: 0.05 })
-    pane.addBinding(tweaks, 'smokeSize', { label: 'Fumée', min: 0.02, max: 0.4, step: 0.01 })
+    const sceneFolder = pane.addFolder({ title: 'Scène', expanded: false })
+    sceneFolder.addBinding(tweaks, 'background', { label: 'Fond' })
+      .on('change', () => (scene.background as THREE.Color).set(tweaks.background))
+    sceneFolder.addBinding(tweaks, 'sunSize', { label: 'Soleil', min: 0.3, max: 2.4, step: 0.05 })
+    sceneFolder.addBinding(tweaks, 'pixelSize', { label: 'Pixels', min: 1, max: 6, step: 0.5 }).on('change', resize)
+
+    const orbitsFolder = pane.addFolder({ title: 'Orbites', expanded: false })
+    orbitsFolder.addBinding(tweaks, 'orbitColor', { label: 'Couleur' })
+    orbitsFolder.addBinding(tweaks, 'orbitWidth', { label: 'Épaisseur', min: 0.5, max: 6, step: 0.5 })
+    orbitsFolder.addBinding(tweaks, 'orbitOpacity', { label: 'Opacité', min: 0, max: 1, step: 0.01 })
+    orbitsFolder.on('change', updateOrbits)
+
+    const starsFolder = pane.addFolder({ title: 'Étoiles', expanded: false })
+    starsFolder.addBinding(tweaks, 'starCount', { label: 'Densité', min: 0, max: STARS_MAX, step: 100 })
+    starsFolder.addBinding(tweaks, 'starSize', { label: 'Taille', min: 0.5, max: 6, step: 0.1 })
+    starsFolder.addBinding(tweaks, 'starColor', { label: 'Couleur' })
+    starsFolder.addBinding(tweaks, 'starBrightness', { label: 'Luminosité', min: 0, max: 1, step: 0.01 })
+    starsFolder.addBinding(tweaks, 'twinkleAmount', { label: 'Scintillement', min: 0, max: 2, step: 0.05 })
+    starsFolder.addBinding(tweaks, 'twinkleSpeed', { label: 'Vitesse', min: 0, max: 4, step: 0.05 })
+    starsFolder.on('change', updateStars)
+
+    const shootingFolder = pane.addFolder({ title: 'Étoiles filantes', expanded: false })
+    shootingFolder.addBinding(tweaks, 'shootingRate', { label: 'Par minute', min: 0, max: 60, step: 0.5 })
+      .on('change', () => { nextShootingStar = Date.now() })
+    shootingFolder.addBinding(tweaks, 'shootingSize', { label: 'Taille', min: 1, max: 6, step: 0.5 })
+    shootingFolder.addBinding(tweaks, 'shootingSpeed', { label: 'Vitesse', min: 0.2, max: 3, step: 0.05 })
+    shootingFolder.addButton({ title: 'En lancer une' }).on('click', () => launchShootingStar(Date.now()))
+
+    const rocketsFolder = pane.addFolder({ title: 'Fusées', expanded: false })
+    rocketsFolder.addBinding(tweaks, 'rocketSize', { label: 'Taille', min: 0.2, max: 2, step: 0.05 })
+    rocketsFolder.addBinding(tweaks, 'smokeSize', { label: 'Fumée', min: 0.02, max: 0.4, step: 0.01 })
+    rocketsFolder.addBinding(tweaks, 'landing', { label: 'Atterrissage', min: 0.05, max: 0.6, step: 0.01 })
+
+    const haloFolder = pane.addFolder({ title: 'Halo de sélection', expanded: false })
+    haloFolder.addBinding(tweaks, 'haloWidth', { label: 'Épaisseur', min: 0.04, max: 0.28, step: 0.01 })
+    haloFolder.addBinding(tweaks, 'haloColor', { label: 'Couleur' })
+    haloFolder.addBinding(tweaks, 'haloOpacity', { label: 'Intensité', min: 0, max: 1, step: 0.01 })
+    haloFolder.on('change', updateHalo)
+
     pane.registerPlugin(TweakpanePluginMedia)
     const camerasFolder = pane.addFolder({ title: 'Caméras', expanded: false })
     camerasFolder.addButton({ title: 'Copier les caméras (JSON)' }).on('click', () => {
