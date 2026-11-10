@@ -9,7 +9,8 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { Pane } from 'tweakpane'
+import { Pane, type FolderApi } from 'tweakpane'
+import * as TweakpanePluginMedia from 'tweakpane-plugin-media'
 
 // Textures (texels nets, façon DS)
 const loadPixelTexture = (path: string, srgb = false) => {
@@ -37,7 +38,8 @@ const emit = defineEmits<{ select: [id: number]; open: [channel: Channel]; cente
 const container = ref<HTMLDivElement>()
 const tweaksEl = ref<HTMLDivElement>()
 
-// Réglages Tweakpane (dev)
+// Réglages Tweakpane (#debug dans l'URL)
+const debug = useState<boolean>('debug', () => false).value
 const tweaks = {
   sunSize: 1,
   pixelSize: 3,
@@ -45,19 +47,63 @@ const tweaks = {
   smokeSize: 0.14,
 }
 let pane: Pane | undefined
+let planetsFolder: FolderApi | undefined
+
+// Apparence de chaque planète (#debug : réglable, gardée dans le navigateur)
+const LOOKS_KEY = 'planet-looks'
+interface Look {
+  size: number
+  color: string
+  texture: THREE.Texture
+  tilt: number
+  rings: boolean
+  ringColor: string
+  ringSize: number
+  spin: number
+}
+const looks = new Map<string, Look>()
+const savedLooks = (): Record<string, Partial<Look>> => {
+  try {
+    return JSON.parse(localStorage.getItem(LOOKS_KEY) ?? '{}')
+  } catch {
+    return {}
+  }
+}
+const lookValues = () => Object.fromEntries([...looks].map(([name, { texture, ...rest }]) => [name, rest]))
+const saveLooks = () => localStorage.setItem(LOOKS_KEY, JSON.stringify(lookValues()))
+
+// Caméras : distance et angle de chaque vue (#debug : réglables, gardés dans le navigateur)
+const CAMERAS_KEY = 'camera-views'
+interface CameraView {
+  distance: number
+  fixedAngle: boolean
+  elevation: number
+  azimuth: number
+}
+const cameraViews: Record<'overview' | 'channel' | 'planet' | 'rocket', CameraView> = {
+  overview: { distance: 24, fixedAngle: true, elevation: 66, azimuth: 0 },
+  channel: { distance: 24, fixedAngle: false, elevation: 66, azimuth: 0 },
+  planet: { distance: 5, fixedAngle: false, elevation: 30, azimuth: 0 },
+  rocket: { distance: 2.6, fixedAngle: false, elevation: 30, azimuth: 0 },
+}
+if (debug) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CAMERAS_KEY) ?? '{}')
+    for (const [name, view] of Object.entries(cameraViews)) Object.assign(view, saved[name])
+  } catch {}
+}
+const CAMERA_LABELS = { overview: "Vue d'ensemble", channel: 'Salon', planet: 'Planète sélectionnée', rocket: 'Suivi de fusée' }
+const viewDirection = (view: CameraView) =>
+  new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - view.elevation), THREE.MathUtils.degToRad(view.azimuth))
 
 // État de la scène
 const DISTANCE_UNIT = 0.9
 const SPIN_SPEED = 0.00002
 const MIN_RADIUS = 3
 const LOW_POLY = { planet: [10, 7], sun: [14, 9] } as const
-const OVERVIEW_DISTANCE = 24
-const FOCUS_DISTANCE = 5
-const ROCKET_FOCUS_DISTANCE = 2.6
 const ROCKET_HIT_RADIUS = 0.6
 const MAX_DISTANCE = 60
 const SYSTEM_MARGIN = 20
-const OVERVIEW_VIEW = new THREE.Vector3(0, 1, 0.45).normalize()
 const SUN_HIT_RADIUS = 10
 const SUN_HOVER_SCALE = 2
 const UP = new THREE.Vector3(0, 1, 0)
@@ -88,7 +134,7 @@ const orbits = new THREE.Group()
 let activeKey = 'general'
 const activeCenter = new THREE.Vector3()
 const overviewCenter = new THREE.Vector3()
-let overviewDistance = OVERVIEW_DISTANCE
+let overviewFit = 0
 let stars: THREE.Points
 const letters = new THREE.Group()
 
@@ -216,6 +262,83 @@ const makeLabel = (text: string, big = false) => {
   el.className = big ? 'planet-label planet-label--sun' : 'planet-label'
   el.textContent = text
   return new CSS2DObject(el)
+}
+
+const BASE_SIZE = 0.55
+
+const lookFor = (p: Planet) => {
+  const name = p.username
+  let look = looks.get(name)
+  if (!look) {
+    look = {
+      size: p.size ?? BASE_SIZE,
+      color: p.color ?? `#${colorFor(name).getHexString()}`,
+      texture,
+      tilt: 0,
+      rings: p.rings ?? false,
+      ringColor: '#d9c9a3',
+      ringSize: 2,
+      spin: 0.01,
+      ...(debug ? savedLooks()[name] : {}),
+    }
+    looks.set(name, look)
+    addLookFolder(name, look)
+  }
+  return look
+}
+
+const applyLook = (mesh: THREE.Mesh, look: Look) => {
+  const material = mesh.material as THREE.MeshStandardMaterial
+  material.color.set(look.color)
+  if (material.map !== look.texture) {
+    look.texture.magFilter = THREE.NearestFilter
+    look.texture.minFilter = THREE.NearestMipmapNearestFilter
+    material.map = look.texture
+    material.needsUpdate = true
+  }
+  mesh.scale.setScalar(look.size / BASE_SIZE)
+  mesh.rotation.z = look.tilt
+  let ring = mesh.userData.ring as THREE.Mesh | undefined
+  if (look.rings && !ring) {
+    ring = new THREE.Mesh(
+      new THREE.BufferGeometry(),
+      new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, flatShading: true }),
+    )
+    ring.rotation.x = Math.PI / 2
+    mesh.userData.ring = ring
+    mesh.add(ring)
+  }
+  if (!ring) return
+  ring.visible = look.rings
+  ;(ring.material as THREE.MeshStandardMaterial).color.set(look.ringColor)
+  if (ring.userData.size !== look.ringSize) {
+    const r = (mesh.geometry as THREE.SphereGeometry).parameters.radius
+    ring.geometry.dispose()
+    ring.geometry = new THREE.RingGeometry(r * 1.3, r * look.ringSize, 32)
+    ring.userData.size = look.ringSize
+  }
+}
+
+const refreshLook = (name: string) => {
+  const look = looks.get(name)!
+  for (const node of planets.values()) if (node.mesh.userData.username === name) applyLook(node.mesh, look)
+}
+
+const addLookFolder = (name: string, look: Look) => {
+  if (!planetsFolder) return
+  const folder = planetsFolder.addFolder({ title: name, expanded: false })
+  folder.addBinding(look, 'size', { label: 'Taille', min: 0.2, max: 2, step: 0.01 })
+  folder.addBinding(look, 'color', { label: 'Couleur' })
+  folder.addBinding(look, 'texture', { label: 'Texture', view: 'texture', height: 80, showMonitor: true })
+  folder.addBinding(look, 'tilt', { label: 'Inclinaison', min: -1.2, max: 1.2, step: 0.05 })
+  folder.addBinding(look, 'rings', { label: 'Anneaux' })
+  folder.addBinding(look, 'ringColor', { label: 'Couleur anneaux' })
+  folder.addBinding(look, 'ringSize', { label: 'Taille anneaux', min: 1.5, max: 4, step: 0.05 })
+  folder.addBinding(look, 'spin', { label: 'Rotation', min: -0.1, max: 0.1, step: 0.001 })
+  folder.on('change', () => {
+    refreshLook(name)
+    saveLooks()
+  })
 }
 
 const removeFromScene = (obj: THREE.Object3D) => {
@@ -419,7 +542,7 @@ const syncPlanet = (
   }
   if (!node) {
     const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(p.me ? 0.7 : 0.55, ...LOW_POLY.planet),
+      new THREE.SphereGeometry(p.me ? 0.7 : BASE_SIZE, ...LOW_POLY.planet),
       new THREE.MeshStandardMaterial({
         flatShading: true,
         map: texture,
@@ -431,6 +554,9 @@ const syncPlanet = (
       }),
     )
     mesh.userData.id = p.id
+    mesh.userData.username = p.username
+    mesh.rotation.order = 'ZYX'
+    applyLook(mesh, lookFor(p))
     mesh.position.copy(from ?? t.pos.clone().applyAxisAngle(UP, spinAt(Date.now())).add(center))
     const label = makeLabel(p.me ? `${p.username} (moi)` : p.username)
     label.position.set(0, 1.4, 0)
@@ -476,11 +602,12 @@ const fitOverview = (points: THREE.Vector3[]) => {
   overviewCenter.copy(sphere.center)
   const halfFov = THREE.MathUtils.degToRad(camera.fov / 2)
   const narrowest = Math.min(halfFov, Math.atan(Math.tan(halfFov) * camera.aspect))
-  overviewDistance = Math.max(OVERVIEW_DISTANCE, (sphere.radius + SYSTEM_MARGIN) / Math.sin(narrowest))
+  overviewFit = (sphere.radius + SYSTEM_MARGIN) / Math.sin(narrowest)
 }
 
 // Écran en hauteur : on recule pour que le salon tienne en largeur
-const channelDistance = () => OVERVIEW_DISTANCE / Math.min(1, camera.aspect)
+const channelDistance = () => cameraViews.channel.distance / Math.min(1, camera.aspect)
+const overviewDistance = () => Math.max(cameraViews.overview.distance, overviewFit)
 
 // Caméra : suit la sélection, le soleil du salon ouvert ou l'ensemble des salons
 const followSelection = (selected?: PlanetNode, rocket?: THREE.Object3D) => {
@@ -491,15 +618,17 @@ const followSelection = (selected?: PlanetNode, rocket?: THREE.Object3D) => {
 
   if (adjustingZoom) {
     const offset = camera.position.clone().sub(controls.target)
-    const goal = rocket ? ROCKET_FOCUS_DISTANCE : selected ? FOCUS_DISTANCE : props.overview ? overviewDistance : channelDistance()
+    const view = rocket ? cameraViews.rocket : selected ? cameraViews.planet : props.overview ? cameraViews.overview : cameraViews.channel
+    const goal = rocket || selected ? view.distance : props.overview ? overviewDistance() : channelDistance()
+    const wantedDir = view.fixedAngle ? viewDirection(view) : null
     const next = THREE.MathUtils.lerp(offset.length(), goal, 0.05)
     const dir = offset.normalize()
-    if (props.overview) dir.lerp(OVERVIEW_VIEW, 0.05).normalize()
+    if (wantedDir) dir.lerp(wantedDir, 0.05).normalize()
     camera.position.copy(controls.target).add(dir.multiplyScalar(next))
-    if (Math.abs(next - goal) < 0.05 && (!props.overview || dir.angleTo(OVERVIEW_VIEW) < 0.01)) adjustingZoom = false
+    if (Math.abs(next - goal) < 0.05 && (!wantedDir || dir.angleTo(wantedDir) < 0.01)) adjustingZoom = false
   }
   const farthest = Math.max(MAX_DISTANCE, channelDistance() * 1.2)
-  controls.maxDistance = props.overview || adjustingZoom ? Math.max(farthest, overviewDistance * 1.2) : farthest
+  controls.maxDistance = props.overview || adjustingZoom ? Math.max(farthest, overviewDistance() * 1.2) : farthest
 }
 
 // Boucle d'animation
@@ -510,7 +639,7 @@ const animate = () => {
   for (const rings of orbits.children) rings.rotation.y = spin
   for (const node of planets.values()) {
     node.mesh.position.lerp(node.target.clone().applyAxisAngle(UP, spin).add(node.center), 0.05)
-    node.mesh.rotation.y += 0.01
+    node.mesh.rotation.y += looks.get(node.mesh.userData.username)?.spin ?? 0.01
     node.label.visible = !props.overview && node.key === activeKey
   }
   for (const dot of letters.children) {
@@ -530,6 +659,7 @@ const animate = () => {
   selectionRing.visible = !!selected
   if (selected) {
     selectionRing.position.copy(selected.mesh.position)
+    selectionRing.scale.setScalar(selected.mesh.scale.x)
     selectionRing.quaternion.copy(camera.quaternion)
   }
   for (const [key, group] of suns) {
@@ -702,7 +832,7 @@ onMounted(() => {
   scene = new THREE.Scene()
   scene.background = new THREE.Color(0x05060f)
   camera = new THREE.PerspectiveCamera(50, el.clientWidth / el.clientHeight, 0.1, 2000)
-  camera.position.copy(OVERVIEW_VIEW).multiplyScalar(channelDistance())
+  camera.position.copy(viewDirection(cameraViews.overview)).multiplyScalar(channelDistance())
   renderer = new THREE.WebGLRenderer({ antialias: false })
   el.appendChild(renderer.domElement)
   labelRenderer = new CSS2DRenderer()
@@ -732,12 +862,41 @@ onMounted(() => {
   syncLetters()
   animate()
 
-  if (import.meta.dev) {
+  if (debug) {
     pane = new Pane({ title: 'Réglages', container: tweaksEl.value })
     pane.addBinding(tweaks, 'sunSize', { label: 'Soleil', min: 0.3, max: 2.4, step: 0.05 })
     pane.addBinding(tweaks, 'pixelSize', { label: 'Pixels', min: 1, max: 6, step: 1 }).on('change', resize)
     pane.addBinding(tweaks, 'rocketSize', { label: 'Fusée', min: 0.2, max: 2, step: 0.05 })
     pane.addBinding(tweaks, 'smokeSize', { label: 'Fumée', min: 0.02, max: 0.4, step: 0.01 })
+    pane.registerPlugin(TweakpanePluginMedia)
+    const camerasFolder = pane.addFolder({ title: 'Caméras', expanded: false })
+    camerasFolder.addButton({ title: 'Copier les caméras (JSON)' }).on('click', () => {
+      navigator.clipboard.writeText(JSON.stringify(cameraViews, null, 2))
+    })
+    camerasFolder.addButton({ title: 'Réinitialiser' }).on('click', () => {
+      localStorage.removeItem(CAMERAS_KEY)
+      location.reload()
+    })
+    for (const [name, view] of Object.entries(cameraViews)) {
+      const folder = camerasFolder.addFolder({ title: CAMERA_LABELS[name as keyof typeof cameraViews], expanded: false })
+      folder.addBinding(view, 'distance', { label: 'Distance', min: 1, max: 120, step: 0.1 })
+      folder.addBinding(view, 'fixedAngle', { label: 'Angle imposé' })
+      folder.addBinding(view, 'elevation', { label: 'Hauteur (°)', min: 5, max: 89, step: 1 })
+      folder.addBinding(view, 'azimuth', { label: 'Côté (°)', min: -180, max: 180, step: 1 })
+    }
+    camerasFolder.on('change', () => {
+      adjustingZoom = true
+      localStorage.setItem(CAMERAS_KEY, JSON.stringify(cameraViews))
+    })
+    planetsFolder = pane.addFolder({ title: 'Planètes', expanded: false })
+    planetsFolder.addButton({ title: 'Copier les réglages (JSON)' }).on('click', () => {
+      navigator.clipboard.writeText(JSON.stringify(lookValues(), null, 2))
+    })
+    planetsFolder.addButton({ title: 'Tout réinitialiser' }).on('click', () => {
+      localStorage.removeItem(LOOKS_KEY)
+      location.reload()
+    })
+    for (const [name, look] of looks) addLookFolder(name, look)
   }
 })
 
@@ -798,7 +957,9 @@ onBeforeUnmount(() => {
   position: fixed;
   left: 16px;
   bottom: 16px;
-  width: 260px;
+  width: 280px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
   z-index: 20;
 }
 </style>

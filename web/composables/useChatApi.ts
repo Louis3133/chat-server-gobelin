@@ -16,6 +16,9 @@ export interface UserMe {
 export interface PublicUser {
   id: number
   username: string
+  planet_color?: string
+  planet_size?: number
+  planet_rings?: boolean
 }
 
 export interface Message {
@@ -36,6 +39,9 @@ export interface Planet {
   distance: number | null
   delay_seconds: number | null
   exchanges: number
+  color?: string
+  size?: number
+  rings?: boolean
 }
 
 export interface SolarSystem {
