@@ -1,19 +1,23 @@
 <template>
-  <v-dialog class="dialog-letter" v-model="open">
+  <v-dialog class="dialog-letter" v-model="open" :fullscreen="xs">
     <div class="dialog-wrapper">
     <div @click.self="selectedId = null" class="dialog-content">
       <div class="tools">
-        <v-btn :color="addingText ? 'primary' : undefined" @click="addingText = !addingText" class="tool-case font-tool" prepend-icon="mdi-format-text">
+        <v-btn :color="tool === 'text' ? 'primary' : undefined" @click="toggleTool('text')" class="tool-case font-tool" prepend-icon="mdi-format-text">
           Texte
         </v-btn>
-        <v-btn class="tool-case font-tool">
-          test
+        <v-btn :color="tool === 'draw' ? 'primary' : undefined" @click="toggleTool('draw')" class="tool-case font-tool" prepend-icon="mdi-pencil">
+          Dessin
         </v-btn>
-        <v-btn class="tool-case font-tool">
-          test
-        </v-btn>
+        <div class="letter-actions">
+      <v-btn variant="text" :disabled="sending" @click="open = false">Fermer</v-btn>
+      <v-btn color="primary" prepend-icon="mdi-send" :loading="sending" :disabled="!texts.length" @click="send">
+        Envoyer à {{ recipient.username }}
+      </v-btn>
+    </div>
       </div>
-      <div @click.self="addBlock" :class="{ 'adding-text': addingText }" class="letter-content">
+      <div @click.self="addBlock" :class="{ 'adding-text': tool === 'text', 'drawing': tool === 'draw' }" class="letter-content">
+        <canvas @pointerdown="startStroke" @pointermove="extendStroke" @pointerup="endStroke" @pointercancel="endStroke" class="drawing-layer" width="900" height="1200"></canvas>
         <div :class="{ selected: block.id === selectedId }" @pointerdown="selectedId = block.id" v-for="block in texts" :key="block.id" :style="{ top: block.top + 'px', left: block.left + 'px', transform: `rotate(${block.rotation}deg)`, fontSize: block.fontSize + 'px' }" class="letter-block">
           <p @blur="updateText(block, $event)" contenteditable class="letter-text">{{ block.text }}</p>
           <span @pointerdown="startRotate(block, $event)" @pointermove="rotate" @pointerup="stopRotate" @pointercancel="stopRotate" class="rotate-handle">↻</span>
@@ -24,12 +28,6 @@
           <span @pointerdown="startResize(block, $event)" @pointermove="resize" @pointerup="stopResize" @pointercancel="stopResize" class="selected-corner bottom right"></span>
         </div>
       </div>
-    </div>
-    <div class="letter-actions">
-      <v-btn variant="text" :disabled="sending" @click="open = false">Fermer</v-btn>
-      <v-btn color="primary" prepend-icon="mdi-send" :loading="sending" :disabled="!texts.length" @click="send">
-        Envoyer à {{ recipient.username }}
-      </v-btn>
     </div>
     </div>
   </v-dialog>
@@ -47,9 +45,10 @@
 
 .tools {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
   gap: 12px;
-  padding: 12px;
+  padding-bottom: 12px;
 }
 
 .letter-block {
@@ -64,6 +63,26 @@
 .selected-corner {
   display: none;
   touch-action: none
+}
+
+.drawing-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+
+}
+
+.drawing .letter-block {
+  opacity: .5;
+  pointer-events: none;
+}
+
+.drawing .drawing-layer {
+  pointer-events: auto;
+  cursor: crosshair;
+  touch-action: none;
 }
 
 .selected{
@@ -184,27 +203,40 @@
 }
 
 .letter-actions {
-  position: absolute;
-  right: 24px;
-  bottom: 24px;
   display: flex;
   gap: 8px;
-  padding: 8px;
-  border-radius: 16px;
-  background: white;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  margin-left: auto;
 }
 
 .dialog-content {
   background: white;
   height: 90vh;
   width: 90vw;
-  justify-content: center;
   display: flex;
+  flex-direction: column;
   margin-inline: auto;
   border-radius: 24px;
   overflow-y: scroll;
   padding: 24px;
+}
+
+@media (max-width: 599px) {
+  .dialog-wrapper {
+    width: 100%;
+    height: 100%;
+  }
+
+  .dialog-content {
+    width: 100%;
+    height: 100%;
+    padding: 12px;
+    border-radius: 0;
+  }
+
+  .letter-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 
 .letter-content.adding-text {
@@ -217,6 +249,7 @@
   height: 1200px;
   position: relative;
   background: rgb(216, 216, 216);
+  flex-shrink: 0;
 }
 
 
@@ -224,8 +257,9 @@
 
 <script setup lang="ts">
 
+
 const selectedId = ref<number | null>(null)
-const addingText = ref(false)
+const tool = ref<'select' | 'text' | 'draw'>('select')
 const sending = ref(false)
 const api = useChatApi()
 let idCount = 3
@@ -261,6 +295,14 @@ let moving: Moving | null = null
 
 const texts = ref<LetterBlock[]>([])
 
+const toggleTool = (name: 'text' | 'draw') => {
+  if (tool.value === name) {
+    tool.value = 'select'
+  } else {
+    tool.value = name
+  }
+}
+
 const getDistance = (centerX: number, centerY: number, event: PointerEvent) => {
   const dx =  event.clientX - centerX;
   const dy =  event.clientY - centerY;
@@ -280,8 +322,8 @@ const getPointerAngle = (centerX: number, centerY: number, event: PointerEvent) 
 
 const addBlock = async (event: MouseEvent) => {
   selectedId.value = null
-  if (!addingText.value) return
-  addingText.value = false
+  if (tool.value !== 'text') return
+  tool.value = 'select';
 
   const sheet = event.currentTarget as HTMLElement
   texts.value.push({fontSize:12, id: idCount, top: event.offsetY, left: event.offsetX, text:'', rotation: 0 })
@@ -391,6 +433,35 @@ const stopResize = () => {
   SelectedBlockSize = null
 }
 
+// Draw
+
+const strokes = ref<Stroke[]>([])
+let currentStroke: Stroke | null = null
+let ctx: CanvasRenderingContext2D | null = null
+
+const startStroke = (event: PointerEvent) => {
+  const canvasElement = event.currentTarget as HTMLCanvasElement
+  canvasElement.setPointerCapture(event.pointerId)
+
+  ctx = canvasElement.getContext('2d')
+  if (!ctx) return
+
+  currentStroke = { color: 'black', width: 4, points: [event.offsetX, event.offsetY] }
+  strokes.value.push(currentStroke)
+  drawStrokes(ctx, strokes.value)
+}
+
+const extendStroke = (event: PointerEvent) => {
+  if (!currentStroke || !ctx) return
+
+  currentStroke.points.push(event.offsetX, event.offsetY)
+  drawStrokes(ctx, strokes.value)
+}
+
+const endStroke = () => {
+  currentStroke = null
+}
+
 
 
 const props = defineProps<{
@@ -399,6 +470,7 @@ const props = defineProps<{
 }>()
 
 const open = defineModel<boolean>({ default: false })
+const { xs } = useDisplay()
 const emit = defineEmits<{ sent: [message: Message], failed: [error: string] }>()
 
 

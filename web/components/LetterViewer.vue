@@ -1,5 +1,5 @@
 <template>
-  <v-dialog v-model="open">
+  <v-dialog v-model="open" :fullscreen="xs">
     <div class="dialog-wrapper">
       <div class="dialog-content">
         <div class="letter-content">
@@ -66,6 +66,26 @@
   white-space: pre-wrap;
 }
 
+@media (max-width: 599px) {
+  .dialog-wrapper {
+    width: 100%;
+    height: 100%;
+  }
+
+  .dialog-content {
+    width: 100%;
+    height: 100%;
+    padding: 12px;
+    border-radius: 0;
+    justify-content: flex-start;
+    overflow: auto;
+  }
+
+  .letter-actions {
+    right: 12px;
+    bottom: 12px;
+  }
+}
 </style>
 
 <script setup lang="ts">
@@ -75,4 +95,5 @@ defineProps<{
 }>()
 
 const open = defineModel<boolean>({ default: false })
+const { xs } = useDisplay()
 </script>

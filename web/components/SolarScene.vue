@@ -1,5 +1,5 @@
 <template>
-  <div ref="container" class="scene">
+  <div ref="container" class="scene" :class="{ 'scene--overview': overview }">
     <Teleport to="body"><div ref="tweaksEl" class="tweaks" /></Teleport>
   </div>
 </template>
@@ -29,8 +29,9 @@ const props = defineProps<{
   channels: Channel[]
   messages: Message[]
   selectedId: number | null
+  overview: boolean
 }>()
-const emit = defineEmits<{ select: [id: number] }>()
+const emit = defineEmits<{ select: [id: number]; open: [channel: Channel] }>()
 
 const container = ref<HTMLDivElement>()
 const tweaksEl = ref<HTMLDivElement>()
@@ -49,6 +50,11 @@ const MIN_RADIUS = 3
 const LOW_POLY = { planet: [10, 7], sun: [14, 9] } as const
 const OVERVIEW_DISTANCE = 24
 const FOCUS_DISTANCE = 5
+const MAX_DISTANCE = 60
+const SYSTEM_MARGIN = 20
+const OVERVIEW_VIEW = new THREE.Vector3(0, 1, 0.45).normalize()
+const SUN_HIT_RADIUS = 10
+const SUN_HOVER_SCALE = 2
 const UP = new THREE.Vector3(0, 1, 0)
 const ORIGIN = new THREE.Vector3()
 
@@ -76,12 +82,19 @@ const suns = new Map<string, THREE.Group>()
 const orbits = new THREE.Group()
 let activeKey = 'general'
 const activeCenter = new THREE.Vector3()
+const overviewCenter = new THREE.Vector3()
+let overviewDistance = OVERVIEW_DISTANCE
 let stars: THREE.Points
 const letters = new THREE.Group()
 const selectionRing = new THREE.Mesh(
   new THREE.RingGeometry(0.6, 0.7, 48),
   new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }),
 )
+const hoverRing = new THREE.Mesh(
+  new THREE.RingGeometry(0.85, 1, 48),
+  new THREE.MeshBasicMaterial({ color: 0xffd54f, side: THREE.DoubleSide }),
+)
+let hoveredSun: THREE.Group | undefined
 
 // Utilitaires
 const colorFor = (name: string) => {
@@ -179,12 +192,44 @@ const makeSun = (name: string | null) => {
     new THREE.MeshStandardMaterial({ map: sunTexture, flatShading: true }),
   ))
   group.add(new THREE.PointLight(0xffffff, 200))
+  const hit = new THREE.Mesh(new THREE.SphereGeometry(SUN_HIT_RADIUS, 8, 6), new THREE.MeshBasicMaterial({ visible: false }))
+  hit.userData.sun = group
+  group.add(hit)
   if (name) {
     const label = makeLabel(name, true)
     label.position.set(0, 3.5, 0)
+    label.element.addEventListener('click', () => openSun(group))
+    label.element.addEventListener('mouseenter', () => { if (props.overview) setHovered(group) })
+    label.element.addEventListener('mouseleave', () => setHovered(undefined))
+    group.userData.label = label.element
     group.add(label)
   }
   return group
+}
+
+// Vue d'ensemble : survol et clic d'un soleil pour choisir son salon
+const setHovered = (group?: THREE.Group) => {
+  if (hoveredSun === group) return
+  hoveredSun?.userData.label?.classList.remove('planet-label--hover')
+  hoveredSun = group
+  hoveredSun?.userData.label?.classList.add('planet-label--hover')
+  renderer.domElement.style.cursor = group ? 'pointer' : ''
+}
+
+const openSun = (group: THREE.Object3D) => {
+  if (props.overview && group.userData.channel) emit('open', group.userData.channel)
+}
+
+const sunAt = (event: MouseEvent) => {
+  const rect = renderer.domElement.getBoundingClientRect()
+  const pointer = new THREE.Vector2(
+    ((event.clientX - rect.left) / rect.width) * 2 - 1,
+    -((event.clientY - rect.top) / rect.height) * 2 + 1,
+  )
+  const ray = new THREE.Raycaster()
+  ray.setFromCamera(pointer, camera)
+  const hits = [...suns.values()].flatMap((g) => g.children.filter((o) => o.userData.sun))
+  return ray.intersectObjects(hits, false)[0]?.object.userData.sun as THREE.Group | undefined
 }
 
 // Synchronisation avec les données
@@ -193,6 +238,7 @@ const syncSystem = () => {
   const where = centers()
   activeKey = props.system ? keyOf(props.system.channel) : 'general'
   activeCenter.copy(where.get(activeKey)?.pos ?? ORIGIN)
+  fitOverview([...where.values()].map((w) => w.pos))
 
   for (const [key, group] of suns) {
     if (!where.has(key)) {
@@ -202,11 +248,12 @@ const syncSystem = () => {
   }
   for (const [key, { channel, pos }] of where) {
     if (!suns.has(key)) {
-      const group = makeSun(channel?.name ?? null)
+      const group = makeSun(channel?.name ?? 'general')
       scene.add(group)
       suns.set(key, group)
     }
     suns.get(key)!.position.copy(pos)
+    suns.get(key)!.userData.channel = channel ?? props.channels.find((c) => keyOf(c) === key) ?? null
   }
 
   const shown: { key: string; sys: SolarSystem }[] = []
@@ -276,7 +323,6 @@ const syncPlanet = (
     planets.set(k, node)
   }
   node.target.copy(t.pos)
-  node.label.visible = key === activeKey
   const ring = new THREE.LineLoop(
     new THREE.BufferGeometry().setFromPoints(new THREE.Path().absarc(0, 0, t.radius, 0, Math.PI * 2).getSpacedPoints(128)),
     new THREE.LineBasicMaterial({ color: 0x445566, transparent: true, opacity: 0.5 }),
@@ -305,20 +351,36 @@ const syncLetters = () => {
   }
 }
 
-// Caméra : suit la sélection ou le soleil du salon ouvert
+// Vue d'ensemble : cadre tous les soleils depuis le dessus
+const fitOverview = (points: THREE.Vector3[]) => {
+  const sphere = new THREE.Sphere().setFromPoints(points)
+  overviewCenter.copy(sphere.center)
+  const halfFov = THREE.MathUtils.degToRad(camera.fov / 2)
+  const narrowest = Math.min(halfFov, Math.atan(Math.tan(halfFov) * camera.aspect))
+  overviewDistance = Math.max(OVERVIEW_DISTANCE, (sphere.radius + SYSTEM_MARGIN) / Math.sin(narrowest))
+}
+
+// Écran en hauteur : on recule pour que le salon tienne en largeur
+const channelDistance = () => OVERVIEW_DISTANCE / Math.min(1, camera.aspect)
+
+// Caméra : suit la sélection, le soleil du salon ouvert ou l'ensemble des salons
 const followSelection = (selected?: PlanetNode) => {
-  const wanted = selected ? selected.mesh.position : activeCenter
+  const wanted = selected ? selected.mesh.position : props.overview ? overviewCenter : activeCenter
   const before = controls.target.clone()
   controls.target.lerp(wanted, 0.04)
   camera.position.add(controls.target.clone().sub(before))
 
   if (adjustingZoom) {
     const offset = camera.position.clone().sub(controls.target)
-    const goal = selected ? FOCUS_DISTANCE : OVERVIEW_DISTANCE
+    const goal = selected ? FOCUS_DISTANCE : props.overview ? overviewDistance : channelDistance()
     const next = THREE.MathUtils.lerp(offset.length(), goal, 0.05)
-    camera.position.copy(controls.target).add(offset.setLength(next))
-    if (Math.abs(next - goal) < 0.05) adjustingZoom = false
+    const dir = offset.normalize()
+    if (props.overview) dir.lerp(OVERVIEW_VIEW, 0.05).normalize()
+    camera.position.copy(controls.target).add(dir.multiplyScalar(next))
+    if (Math.abs(next - goal) < 0.05 && (!props.overview || dir.angleTo(OVERVIEW_VIEW) < 0.01)) adjustingZoom = false
   }
+  const farthest = Math.max(MAX_DISTANCE, channelDistance() * 1.2)
+  controls.maxDistance = props.overview || adjustingZoom ? Math.max(farthest, overviewDistance * 1.2) : farthest
 }
 
 // Boucle d'animation
@@ -330,6 +392,7 @@ const animate = () => {
   for (const node of planets.values()) {
     node.mesh.position.lerp(node.target.clone().applyAxisAngle(UP, spin).add(node.center), 0.05)
     node.mesh.rotation.y += 0.01
+    node.label.visible = !props.overview && node.key === activeKey
   }
   for (const dot of letters.children as THREE.Mesh[]) {
     const { from, to, start, end } = dot.userData
@@ -341,10 +404,23 @@ const animate = () => {
     selectionRing.position.copy(selected.mesh.position)
     selectionRing.quaternion.copy(camera.quaternion)
   }
-  suns.get('general')?.children[0].scale.setScalar(tweaks.sunSize)
+  for (const [key, group] of suns) {
+    const sun = group.children[0]
+    const goal = (key === 'general' ? tweaks.sunSize : 1) * (group === hoveredSun ? SUN_HOVER_SCALE : 1)
+    sun.scale.setScalar(THREE.MathUtils.lerp(sun.scale.x, goal, 0.15))
+  }
+  hoverRing.visible = !!hoveredSun
+  if (hoveredSun) {
+    hoverRing.position.copy(hoveredSun.position)
+    hoverRing.quaternion.copy(camera.quaternion)
+    hoverRing.scale.setScalar(camera.position.distanceTo(hoveredSun.position) * 0.03 * (1 + Math.sin(now / 200) * 0.08))
+  }
   followSelection(selected)
   controls.update()
   stars.position.copy(camera.position)
+  shootingStars.position.copy(camera.position)
+  animateShootingStars(now)
+  starMaterial.uniforms.time.value = performance.now() / 1000
   renderer.render(scene, camera)
   labelRenderer.render(scene, camera)
 }
@@ -355,6 +431,7 @@ const resize = () => {
   if (!el) return
   renderer.setPixelRatio(1 / tweaks.pixelSize)
   renderer.setSize(el.clientWidth, el.clientHeight)
+  starMaterial.uniforms.scale.value = renderer.getDrawingBufferSize(new THREE.Vector2()).y / 2
   labelRenderer.setSize(el.clientWidth, el.clientHeight)
   camera.aspect = el.clientWidth / el.clientHeight
   camera.updateProjectionMatrix()
@@ -362,8 +439,15 @@ const resize = () => {
 
 const onPointerDown = (e: PointerEvent) => { downAt = { x: e.clientX, y: e.clientY } }
 
+const onPointerMove = (event: PointerEvent) => setHovered(props.overview ? sunAt(event) : undefined)
+
 const onClick = (event: MouseEvent) => {
   if (Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y) > 5) return
+  if (props.overview) {
+    const sun = sunAt(event)
+    if (sun) openSun(sun)
+    return
+  }
   const rect = renderer.domElement.getBoundingClientRect()
   const pointer = new THREE.Vector2(
     ((event.clientX - rect.left) / rect.width) * 2 - 1,
@@ -376,16 +460,106 @@ const onClick = (event: MouseEvent) => {
   if (hit) emit('select', hit.object.userData.id)
 }
 
+// Étoiles : chacune scintille doucement à son rythme
+const starMaterial = new THREE.ShaderMaterial({
+  uniforms: { time: { value: 0 }, size: { value: 2 }, scale: { value: 1 } },
+  vertexShader: `
+    attribute float phase;
+    uniform float time;
+    uniform float size;
+    uniform float scale;
+    varying float vLight;
+    void main() {
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      float speed = 1.2 + fract(phase * 7.31) * 2.8;
+      float flash = pow(0.5 + 0.5 * sin(time * speed + phase * 6.2831), 6.0);
+      vLight = 0.4 + 0.6 * flash;
+      gl_PointSize = size * (scale / -mv.z) * (1.0 + flash);
+      gl_Position = projectionMatrix * mv;
+    }
+  `,
+  fragmentShader: `
+    varying float vLight;
+    void main() {
+      gl_FragColor = vec4(vec3(vLight), 1.0);
+    }
+  `,
+})
+
 const makeStars = () => {
   const count = 1500
   const positions = new Float32Array(count * 3)
+  const phases = new Float32Array(count)
   for (let i = 0; i < count; i++) {
     const v = new THREE.Vector3().randomDirection().multiplyScalar(500 + Math.random() * 200)
     positions.set([v.x, v.y, v.z], i * 3)
+    phases[i] = Math.random()
   }
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-  return new THREE.Points(geometry, new THREE.PointsMaterial({ color: 0xffffff, size: 2, sizeAttenuation: true }))
+  geometry.setAttribute('phase', new THREE.BufferAttribute(phases, 1))
+  return new THREE.Points(geometry, starMaterial)
+}
+
+// Étoiles filantes : de temps en temps, une traînée au loin
+const SHOOTING_STAR_DISTANCE = 550
+const SHOOTING_STAR_DOTS = 40
+const shootingStars = new THREE.Group()
+let nextShootingStar = 0
+
+const launchShootingStar = (now: number) => {
+  const forward = camera.getWorldDirection(new THREE.Vector3())
+  const start = forward.add(new THREE.Vector3().randomDirection().multiplyScalar(0.6)).setLength(SHOOTING_STAR_DISTANCE)
+  const dir = new THREE.Vector3().randomDirection().projectOnPlane(start).normalize()
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(SHOOTING_STAR_DOTS * 3), 3))
+  const fade = Array.from({ length: SHOOTING_STAR_DOTS }, (_, i) => (1 - i / SHOOTING_STAR_DOTS) ** 2)
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(fade.flatMap((f) => [f, f, f]), 3))
+  const trail = new THREE.Points(geometry, new THREE.PointsMaterial({
+    size: 2,
+    sizeAttenuation: false,
+    vertexColors: true,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  }))
+  trail.frustumCulled = false
+  trail.userData = {
+    start,
+    dir,
+    born: now,
+    life: 900 + Math.random() * 600,
+    speed: 0.2 + Math.random() * 0.1,
+    length: 150 + Math.random() * 70,
+  }
+  shootingStars.add(trail)
+}
+
+const animateShootingStars = (now: number) => {
+  if (now >= nextShootingStar) {
+    if (nextShootingStar) launchShootingStar(now)
+    nextShootingStar = now + 8000 + Math.random() * 12000
+  }
+  for (const trail of [...shootingStars.children] as THREE.Points[]) {
+    const { start, dir, born, life, speed, length } = trail.userData
+    const t = (now - born) / life
+    const material = trail.material as THREE.PointsMaterial
+    if (t >= 1) {
+      shootingStars.remove(trail)
+      trail.geometry.dispose()
+      material.dispose()
+      continue
+    }
+    const head = start.clone().addScaledVector(dir, (now - born) * speed)
+    const span = length * Math.min(1, t * 3)
+    const positions = trail.geometry.attributes.position as THREE.BufferAttribute
+    for (let i = 0; i < SHOOTING_STAR_DOTS; i++) {
+      const dot = head.clone().addScaledVector(dir, -span * (i / SHOOTING_STAR_DOTS))
+      positions.setXYZ(i, dot.x, dot.y, dot.z)
+    }
+    positions.needsUpdate = true
+    material.opacity = Math.min(1, Math.sin(Math.PI * t) * 1.5)
+  }
 }
 
 // Montage
@@ -394,7 +568,7 @@ onMounted(() => {
   scene = new THREE.Scene()
   scene.background = new THREE.Color(0x05060f)
   camera = new THREE.PerspectiveCamera(50, el.clientWidth / el.clientHeight, 0.1, 2000)
-  camera.position.set(0, 14, 20)
+  camera.position.copy(OVERVIEW_VIEW).multiplyScalar(channelDistance())
   renderer = new THREE.WebGLRenderer({ antialias: false })
   el.appendChild(renderer.domElement)
   labelRenderer = new CSS2DRenderer()
@@ -405,18 +579,20 @@ onMounted(() => {
   controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
   controls.minDistance = 2.5
-  controls.maxDistance = 60
+  controls.maxDistance = MAX_DISTANCE
   controls.addEventListener('start', () => { adjustingZoom = false })
   controls.maxPolarAngle = Math.PI * 0.49
 
   stars = makeStars()
-  scene.add(stars, new THREE.AmbientLight(0xffffff, 1.5), orbits, letters, selectionRing)
+  scene.add(stars, shootingStars, new THREE.AmbientLight(0xffffff, 1.5), orbits, letters, selectionRing, hoverRing)
 
   renderer.domElement.addEventListener('pointerdown', onPointerDown)
   renderer.domElement.addEventListener('click', onClick)
+  renderer.domElement.addEventListener('pointermove', onPointerMove)
   observer = new ResizeObserver(resize)
   observer.observe(el)
   ready = true
+  adjustingZoom = props.overview
   syncSystem()
   syncLetters()
   animate()
@@ -432,6 +608,10 @@ watch(() => [props.system, props.decor, props.channels], () => { syncSystem(); s
 watch(() => props.system?.channel.id, () => { adjustingZoom = true })
 watch(() => props.messages, syncLetters)
 watch(() => props.selectedId, () => { adjustingZoom = true })
+watch(() => props.overview, () => {
+  adjustingZoom = true
+  setHovered(undefined)
+})
 
 onBeforeUnmount(() => {
   ready = false
@@ -463,6 +643,15 @@ onBeforeUnmount(() => {
 }
 .scene :deep(.planet-label--sun) {
   font-size: 16px;
+  transition: font-size 0.15s, color 0.15s;
+}
+.scene :deep(.planet-label--hover) {
+  font-size: 20px;
+  color: #ffd54f;
+}
+.scene--overview :deep(.planet-label--sun) {
+  pointer-events: auto;
+  cursor: pointer;
 }
 .scene :deep(canvas) {
   image-rendering: pixelated;

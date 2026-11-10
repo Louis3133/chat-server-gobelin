@@ -41,11 +41,12 @@ const onSubmit = async () => {
   if (!valid.value) return
   loading.value = true
   try {
-    if (mode.value === 'register') {
+    const isRegister = mode.value === 'register'
+    if (isRegister) {
       await api.register(username.value, password.value)
     }
     await api.login(username.value, password.value)
-    await navigateTo('/channels')
+    await navigateTo(isRegister ? '/welcome' : '/channels')
   } catch (error) {
     fail(error)
   } finally {

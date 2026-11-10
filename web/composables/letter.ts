@@ -7,6 +7,15 @@ export type LetterBlock = {
   fontSize: number,
 }
 
+export type Stroke = {
+  color: string,
+  width: number,
+  points: number[],
+}
+
+export const LETTER_WIDTH = 900
+export const LETTER_HEIGHT = 1200
+
 // Même limite que l'API (maxContentLength dans handlers/message.go)
 export const LETTER_MAX_LENGTH = 5000
 
@@ -29,5 +38,23 @@ export const parseLetter = (content: string): LetterBlock[] | null => {
       ({ id, top, left, rotation, fontSize, text }))
   } catch {
     return null
+  }
+}
+
+// Dessin
+export const drawStrokes = (ctx: CanvasRenderingContext2D, strokes: Stroke[]) => {
+  ctx.clearRect(0, 0, LETTER_WIDTH, LETTER_HEIGHT)
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+
+  for (const stroke of strokes) {
+    ctx.strokeStyle = stroke.color
+    ctx.lineWidth = stroke.width
+    ctx.beginPath()
+    ctx.moveTo(stroke.points[0]!, stroke.points[1]!)
+    for (let i = 2; i < stroke.points.length; i += 2) {
+      ctx.lineTo(stroke.points[i]!, stroke.points[i + 1]!)
+    }
+    ctx.stroke()
   }
 }

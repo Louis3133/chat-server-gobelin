@@ -1,7 +1,9 @@
 <template>
-  <v-card class="py-8 ml-0" max-width="460">
+  <InfoMenu title="Mes salons">
+  <v-card class="py-8">
     <div class="d-flex align-center mb-4">
       <h1 class="text-h5 flex-grow-1">Bonjour {{ me?.username }}</h1>
+      <v-btn variant="text" prepend-icon="mdi-logout" @click="logout">Déconnexion</v-btn>
     </div>
 
     <h2 class="text-h6 mb-2">Mes salons</h2>
@@ -44,6 +46,7 @@
 
     <v-snackbar v-model="snackbar" color="red" :timeout="3000">{{ snackbarText }}</v-snackbar>
   </v-card>
+  </InfoMenu>
 </template>
 
 <script setup lang="ts">
@@ -65,6 +68,11 @@ const joinable = computed(() => {
   const mine = new Set(me.value?.channels.map((c) => c.id))
   return allChannels.value.filter((c) => !mine.has(c.id)).map((c) => c.name)
 })
+
+const logout = () => {
+  api.clearToken()
+  navigateTo('/')
+}
 
 // Administration
 const deletableChannels = computed(() => allChannels.value.filter((c) => c.name !== 'general'))

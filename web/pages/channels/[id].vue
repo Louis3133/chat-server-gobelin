@@ -1,10 +1,25 @@
 <template>
-  <v-card class="infos-panel mr-6 px-4 py-8 bg-white mr-0 ml-auto" max-width="460">
-    <v-btn v-if="!selected" variant="text" to="/channels" prepend-icon="mdi-arrow-left" class="btn-white mb-2">Mes salons</v-btn>
-    <v-btn v-if="selected" variant="text" prepend-icon="mdi-arrow-left" class="btn-white mb-2"
-          @click="recipientId = null; composerOpen = false">
-      Retour au salon
-    </v-btn>
+  <InfoMenu :title="selected?.username ?? system?.channel.name" :back-label="selected ? 'Retour au salon' : 'Mes salons'" @back="back">
+  <template #actions>
+    <v-btn icon="mdi-email-edit-outline" color="white" variant="outlined" title="Écrire à…" aria-label="Écrire à…" @click="searchOpen = !searchOpen" />
+    <v-autocomplete
+      v-if="searchOpen"
+      :model-value="null"
+      :items="recipients"
+      item-title="username"
+      item-value="id"
+      placeholder="Nom du destinataire"
+      class="recipient-search"
+      density="compact"
+      variant="solo"
+      autofocus
+      auto-select-first
+      hide-details
+      @update:model-value="writeTo"
+      @keydown.esc="searchOpen = false"
+    />
+  </template>
+  <v-card class="infos-panel px-4 py-8 bg-white">
     <h1 v-if="!selected" class="text-h5 mb-4">{{ system?.channel.name ?? 'Salon' }}</h1>
     <h1 v-if="selected" class="text-h5 mb-4">{{ selected.username }}</h1>
 
@@ -43,16 +58,32 @@
 
     <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">{{ snackbarText }}</v-snackbar>
   </v-card>
+  </InfoMenu>
 </template>
 
 <style scoped>
 
-.infos-panel {
-  border-radius: 24px;
+.recipient-search {
+  width: 260px;
+  flex-shrink: 0;
 }
 
-.btn-white {
-  color: white;
+@media (max-width: 599px) {
+  .recipient-search {
+    position: fixed;
+    top: 72px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+  }
+
+  .infos-panel {
+    border-radius: 16px;
+  }
+}
+
+.infos-panel {
+  border-radius: 24px;
 }
 
 </style>
@@ -71,6 +102,7 @@ const snackbar = ref(false)
 const snackbarText = ref('')
 const snackbarColor = ref('red')
 const composerOpen = ref(false)
+const searchOpen = ref(false)
 const readerOpen = ref(false)
 const reading = ref<{ blocks: LetterBlock[], from: string } | null>(null)
 
@@ -115,6 +147,23 @@ const load = async () => {
 const onSent = async (sent: Message) => {
   notify(sent.in_transit ? `Lettre partie, arrivée ${formatDate(sent.deliver_at)}` : 'Lettre envoyée', 'success')
   await load()
+}
+
+// Écrire à quelqu'un du salon en cherchant son nom
+const recipients = computed(() => system.value?.planets.filter((p) => !p.me) ?? [])
+
+const writeTo = (id: number | null) => {
+  if (id == null) return
+  recipientId.value = id
+  composerOpen.value = true
+  searchOpen.value = false
+}
+
+// Retour à l'étape précédente : de la planète au salon, du salon à la liste
+const back = () => {
+  if (!selected.value) return navigateTo('/channels')
+  recipientId.value = null
+  composerOpen.value = false
 }
 
 const read = (m: Message) => {
