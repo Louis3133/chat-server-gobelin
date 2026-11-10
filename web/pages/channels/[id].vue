@@ -163,8 +163,10 @@ const writeTo = (id: number | null) => {
 const back = () => {
   if (!selected.value) return navigateTo('/channels')
   recipientId.value = null
-  composerOpen.value = false
 }
+
+// Sans planète sélectionnée (retour ou clic sur le soleil), l'éditeur se referme
+watch(recipientId, (id) => { if (id == null) composerOpen.value = false })
 
 const read = (m: Message) => {
   reading.value = { blocks: parseLetter(m.content) ?? [], from: m.user }

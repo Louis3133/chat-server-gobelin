@@ -1,7 +1,7 @@
 <template>
   <div class="app">
     <!-- La scène vit ici, derrière toutes les pages : elle ne se recharge pas à la navigation -->
-    <SolarScene class="background" :system="system" :decor="decor" :channels="channels" :messages="messages" :selected-id="selectedId" :overview="!system" @select="pick" @open="openChannel" />
+    <SolarScene class="background" :system="system" :decor="decor" :channels="channels" :messages="messages" :selected-id="selectedId" :overview="!system" @select="pick" @open="openChannel" @center="selectedId = null" />
     <template v-if="route.path !== '/'">
       <v-btn v-if="xs" class="logout" icon="mdi-logout" color="white" variant="outlined" title="Déconnexion" aria-label="Déconnexion" @click="logout" />
       <v-btn v-else class="logout" color="white" variant="outlined" prepend-icon="mdi-logout" @click="logout">

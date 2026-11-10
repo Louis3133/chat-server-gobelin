@@ -8,6 +8,7 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { Pane } from 'tweakpane'
 
 // Textures (texels nets, façon DS)
@@ -31,7 +32,7 @@ const props = defineProps<{
   selectedId: number | null
   overview: boolean
 }>()
-const emit = defineEmits<{ select: [id: number]; open: [channel: Channel] }>()
+const emit = defineEmits<{ select: [id: number]; open: [channel: Channel]; center: [] }>()
 
 const container = ref<HTMLDivElement>()
 const tweaksEl = ref<HTMLDivElement>()
@@ -40,6 +41,8 @@ const tweaksEl = ref<HTMLDivElement>()
 const tweaks = {
   sunSize: 1,
   pixelSize: 3,
+  rocketSize: 1,
+  smokeSize: 0.14,
 }
 let pane: Pane | undefined
 
@@ -50,6 +53,8 @@ const MIN_RADIUS = 3
 const LOW_POLY = { planet: [10, 7], sun: [14, 9] } as const
 const OVERVIEW_DISTANCE = 24
 const FOCUS_DISTANCE = 5
+const ROCKET_FOCUS_DISTANCE = 2.6
+const ROCKET_HIT_RADIUS = 0.6
 const MAX_DISTANCE = 60
 const SYSTEM_MARGIN = 20
 const OVERVIEW_VIEW = new THREE.Vector3(0, 1, 0.45).normalize()
@@ -86,6 +91,108 @@ const overviewCenter = new THREE.Vector3()
 let overviewDistance = OVERVIEW_DISTANCE
 let stars: THREE.Points
 const letters = new THREE.Group()
+
+// Fusées des lettres : modèle chargé une fois, nez tourné vers +Z
+const ROCKET_LENGTH = 0.7
+let rocketModel: THREE.Object3D | null = null
+let followedKey: string | null = null
+
+const followedRocket = () => (followedKey ? letters.children.find((d) => d.userData.key === followedKey) : undefined)
+
+const stopFollowing = () => {
+  if (!followedKey) return
+  followedKey = null
+  adjustingZoom = true
+}
+
+const rocketAt = (event: MouseEvent) => {
+  const { ray } = rayAt(event)
+  return letters.children
+    .filter((d) => ray.distanceToPoint(d.position) < ROCKET_HIT_RADIUS * tweaks.rocketSize)
+    .sort((a, b) => a.position.distanceTo(camera.position) - b.position.distanceTo(camera.position))[0]
+}
+
+const loadRocket = () => {
+  new GLTFLoader().load('/models/rocket/scene.gltf', (gltf) => {
+    const model = gltf.scene
+    model.traverse((o) => {
+      if (!(o instanceof THREE.Mesh)) return
+      const material = o.material as THREE.MeshStandardMaterial
+      for (const map of [material.map, material.normalMap, material.roughnessMap, material.metalnessMap]) {
+        if (!map) continue
+        map.magFilter = THREE.NearestFilter
+        map.minFilter = THREE.NearestMipmapNearestFilter
+        map.needsUpdate = true
+      }
+    })
+    const box = new THREE.Box3().setFromObject(model)
+    model.position.sub(box.getCenter(new THREE.Vector3()))
+    const pivot = new THREE.Group()
+    pivot.add(model)
+    pivot.rotation.x = Math.PI / 2
+    pivot.scale.setScalar(ROCKET_LENGTH / box.getSize(new THREE.Vector3()).y)
+    rocketModel = new THREE.Group().add(pivot)
+    syncLetters()
+  })
+}
+
+// Fumée : particules carrées, pixelisées par le rendu basse résolution
+const SMOKE_MAX = 400
+const SMOKE_LIFE = 1400
+const SMOKE_EVERY = 45
+const smokeOrigins = new Float32Array(SMOKE_MAX * 3)
+const smokeDrift = new Float32Array(SMOKE_MAX * 3)
+const smokeBorn = new Float64Array(SMOKE_MAX).fill(-Infinity)
+const smokeShade = new Float32Array(SMOKE_MAX)
+let smokeNext = 0
+const smokeGeometry = new THREE.BufferGeometry()
+smokeGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(SMOKE_MAX * 3), 3))
+smokeGeometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(SMOKE_MAX * 4), 4))
+const smoke = new THREE.Points(smokeGeometry, new THREE.PointsMaterial({
+  size: 0.14,
+  vertexColors: true,
+  transparent: true,
+  depthWrite: false,
+}))
+smoke.frustumCulled = false
+const TAIL = new THREE.Vector3(0, 0, -ROCKET_LENGTH / 2)
+
+const puff = (rocket: THREE.Object3D, now: number) => {
+  rocket.updateMatrixWorld()
+  const at = rocket.localToWorld(TAIL.clone())
+  const i = smokeNext
+  smokeNext = (smokeNext + 1) % SMOKE_MAX
+  smokeOrigins.set([at.x, at.y, at.z], i * 3)
+  const drift = new THREE.Vector3().randomDirection().multiplyScalar(0.00012 + Math.random() * 0.0002)
+  smokeDrift.set([drift.x, drift.y, drift.z], i * 3)
+  smokeBorn[i] = now
+  smokeShade[i] = 0.55 + Math.random() * 0.35
+}
+
+const animateSmoke = (now: number) => {
+  const positions = smokeGeometry.attributes.position as THREE.BufferAttribute
+  const colors = smokeGeometry.attributes.color as THREE.BufferAttribute
+  for (let i = 0; i < SMOKE_MAX; i++) {
+    const age = now - smokeBorn[i]!
+    if (age >= SMOKE_LIFE) {
+      colors.setW(i, 0)
+      continue
+    }
+    const t = age / SMOKE_LIFE
+    positions.setXYZ(
+      i,
+      smokeOrigins[i * 3]! + smokeDrift[i * 3]! * age,
+      smokeOrigins[i * 3 + 1]! + smokeDrift[i * 3 + 1]! * age,
+      smokeOrigins[i * 3 + 2]! + smokeDrift[i * 3 + 2]! * age,
+    )
+    const shade = smokeShade[i]!
+    if (t < 0.12) colors.setXYZ(i, 1, 0.65, 0.25)
+    else colors.setXYZ(i, shade, shade, shade)
+    colors.setW(i, Math.ceil((1 - t) * 4) / 4)
+  }
+  positions.needsUpdate = true
+  colors.needsUpdate = true
+}
 const selectionRing = new THREE.Mesh(
   new THREE.RingGeometry(0.6, 0.7, 48),
   new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }),
@@ -220,7 +327,7 @@ const openSun = (group: THREE.Object3D) => {
   if (props.overview && group.userData.channel) emit('open', group.userData.channel)
 }
 
-const sunAt = (event: MouseEvent) => {
+const rayAt = (event: MouseEvent) => {
   const rect = renderer.domElement.getBoundingClientRect()
   const pointer = new THREE.Vector2(
     ((event.clientX - rect.left) / rect.width) * 2 - 1,
@@ -228,8 +335,18 @@ const sunAt = (event: MouseEvent) => {
   )
   const ray = new THREE.Raycaster()
   ray.setFromCamera(pointer, camera)
+  return ray
+}
+
+const sunAt = (event: MouseEvent) => {
   const hits = [...suns.values()].flatMap((g) => g.children.filter((o) => o.userData.sun))
-  return ray.intersectObjects(hits, false)[0]?.object.userData.sun as THREE.Group | undefined
+  return rayAt(event).intersectObjects(hits, false)[0]?.object.userData.sun as THREE.Group | undefined
+}
+
+// Dans un salon, le soleil ramène à la vue du salon quand une planète est sélectionnée
+const activeSunAt = (event: MouseEvent) => {
+  const sun = suns.get(activeKey)?.children[0]
+  return props.selectedId != null && !!sun && rayAt(event).intersectObject(sun, false).length > 0
 }
 
 // Synchronisation avec les données
@@ -340,8 +457,10 @@ const syncLetters = () => {
     const from = planets.get(`${activeKey}:${m.user_id}`)
     const to = planets.get(`${activeKey}:${m.recipient_id}`)
     if (!from || !to) continue
-    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffd54f }))
+    const dot = rocketModel?.clone() ?? new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffd54f }))
     dot.userData = {
+      key: `${m.user_id}:${m.recipient_id}:${m.creation_date}`,
+      lastPuff: 0,
       from: from.mesh,
       to: to.mesh,
       start: new Date(m.creation_date).getTime(),
@@ -364,15 +483,15 @@ const fitOverview = (points: THREE.Vector3[]) => {
 const channelDistance = () => OVERVIEW_DISTANCE / Math.min(1, camera.aspect)
 
 // Caméra : suit la sélection, le soleil du salon ouvert ou l'ensemble des salons
-const followSelection = (selected?: PlanetNode) => {
-  const wanted = selected ? selected.mesh.position : props.overview ? overviewCenter : activeCenter
+const followSelection = (selected?: PlanetNode, rocket?: THREE.Object3D) => {
+  const wanted = rocket ? rocket.position : selected ? selected.mesh.position : props.overview ? overviewCenter : activeCenter
   const before = controls.target.clone()
   controls.target.lerp(wanted, 0.04)
   camera.position.add(controls.target.clone().sub(before))
 
   if (adjustingZoom) {
     const offset = camera.position.clone().sub(controls.target)
-    const goal = selected ? FOCUS_DISTANCE : props.overview ? overviewDistance : channelDistance()
+    const goal = rocket ? ROCKET_FOCUS_DISTANCE : selected ? FOCUS_DISTANCE : props.overview ? overviewDistance : channelDistance()
     const next = THREE.MathUtils.lerp(offset.length(), goal, 0.05)
     const dir = offset.normalize()
     if (props.overview) dir.lerp(OVERVIEW_VIEW, 0.05).normalize()
@@ -394,10 +513,19 @@ const animate = () => {
     node.mesh.rotation.y += 0.01
     node.label.visible = !props.overview && node.key === activeKey
   }
-  for (const dot of letters.children as THREE.Mesh[]) {
+  for (const dot of letters.children) {
     const { from, to, start, end } = dot.userData
-    dot.position.lerpVectors(from.position, to.position, progressOf(start, end, now))
+    const progress = progressOf(start, end, now)
+    dot.position.lerpVectors(from.position, to.position, progress)
+    dot.scale.setScalar(tweaks.rocketSize)
+    dot.lookAt(to.position)
+    if (rocketModel && progress < 1 && now - dot.userData.lastPuff >= SMOKE_EVERY) {
+      dot.userData.lastPuff = now
+      puff(dot, now)
+    }
   }
+  ;(smoke.material as THREE.PointsMaterial).size = tweaks.smokeSize
+  animateSmoke(now)
   const selected = props.selectedId != null ? planets.get(`${activeKey}:${props.selectedId}`) : undefined
   selectionRing.visible = !!selected
   if (selected) {
@@ -415,7 +543,9 @@ const animate = () => {
     hoverRing.quaternion.copy(camera.quaternion)
     hoverRing.scale.setScalar(camera.position.distanceTo(hoveredSun.position) * 0.03 * (1 + Math.sin(now / 200) * 0.08))
   }
-  followSelection(selected)
+  const rocket = followedRocket()
+  if (followedKey && !rocket) stopFollowing()
+  followSelection(selected, rocket)
   controls.update()
   stars.position.copy(camera.position)
   shootingStars.position.copy(camera.position)
@@ -439,7 +569,10 @@ const resize = () => {
 
 const onPointerDown = (e: PointerEvent) => { downAt = { x: e.clientX, y: e.clientY } }
 
-const onPointerMove = (event: PointerEvent) => setHovered(props.overview ? sunAt(event) : undefined)
+const onPointerMove = (event: PointerEvent) => {
+  setHovered(props.overview ? sunAt(event) : undefined)
+  if (!props.overview) renderer.domElement.style.cursor = activeSunAt(event) ? 'pointer' : ''
+}
 
 const onClick = (event: MouseEvent) => {
   if (Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y) > 5) return
@@ -448,16 +581,17 @@ const onClick = (event: MouseEvent) => {
     if (sun) openSun(sun)
     return
   }
-  const rect = renderer.domElement.getBoundingClientRect()
-  const pointer = new THREE.Vector2(
-    ((event.clientX - rect.left) / rect.width) * 2 - 1,
-    -((event.clientY - rect.top) / rect.height) * 2 + 1,
-  )
-  const ray = new THREE.Raycaster()
-  ray.setFromCamera(pointer, camera)
+  const rocket = rocketAt(event)
+  if (rocket) {
+    followedKey = rocket.userData.key
+    adjustingZoom = true
+    return
+  }
+  stopFollowing()
   const active = [...planets.values()].filter((n) => n.key === activeKey)
-  const hit = ray.intersectObjects(active.map((n) => n.mesh), false)[0]
+  const hit = rayAt(event).intersectObjects(active.map((n) => n.mesh), false)[0]
   if (hit) emit('select', hit.object.userData.id)
+  else if (activeSunAt(event)) emit('center')
 }
 
 // Étoiles : chacune scintille doucement à son rythme
@@ -584,7 +718,8 @@ onMounted(() => {
   controls.maxPolarAngle = Math.PI * 0.49
 
   stars = makeStars()
-  scene.add(stars, shootingStars, new THREE.AmbientLight(0xffffff, 1.5), orbits, letters, selectionRing, hoverRing)
+  scene.add(stars, shootingStars, new THREE.AmbientLight(0xffffff, 1.5), orbits, letters, smoke, selectionRing, hoverRing)
+  loadRocket()
 
   renderer.domElement.addEventListener('pointerdown', onPointerDown)
   renderer.domElement.addEventListener('click', onClick)
@@ -601,14 +736,17 @@ onMounted(() => {
     pane = new Pane({ title: 'Réglages', container: tweaksEl.value })
     pane.addBinding(tweaks, 'sunSize', { label: 'Soleil', min: 0.3, max: 2.4, step: 0.05 })
     pane.addBinding(tweaks, 'pixelSize', { label: 'Pixels', min: 1, max: 6, step: 1 }).on('change', resize)
+    pane.addBinding(tweaks, 'rocketSize', { label: 'Fusée', min: 0.2, max: 2, step: 0.05 })
+    pane.addBinding(tweaks, 'smokeSize', { label: 'Fumée', min: 0.02, max: 0.4, step: 0.01 })
   }
 })
 
 watch(() => [props.system, props.decor, props.channels], () => { syncSystem(); syncLetters() })
-watch(() => props.system?.channel.id, () => { adjustingZoom = true })
+watch(() => props.system?.channel.id, () => { followedKey = null; adjustingZoom = true })
 watch(() => props.messages, syncLetters)
-watch(() => props.selectedId, () => { adjustingZoom = true })
+watch(() => props.selectedId, () => { followedKey = null; adjustingZoom = true })
 watch(() => props.overview, () => {
+  followedKey = null
   adjustingZoom = true
   setHovered(undefined)
 })
