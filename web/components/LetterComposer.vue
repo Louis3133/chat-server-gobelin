@@ -24,7 +24,7 @@
         </v-btn>
         <v-btn aria-label="Image" class="tool-case"><img src="/icons/composer/image-sharp.svg" alt=""></v-btn>
       </div>
-      <span v-if="previewing" class="preview-label">ça te plaît ?</span>
+      <h2 v-if="previewing" class="preview-label text-heading">Ça te plaît&nbsp;?</h2>
       <div v-if="paletteOpen && !previewing" class="palette pixel-frame">
         <button v-for="swatch in PALETTE" :key="swatch.value" :class="{ current: swatch.value === color }" :style="{ background: swatch.value }" :aria-label="swatch.name" @click="pickColor(swatch.value)" class="swatch"></button>
       </div>
@@ -51,16 +51,16 @@
         </div>
       </div>
       </div>
-      <div class="letter-actions">
-        <template v-if="!previewing">
-          <v-btn @click="open = false">Annuler</v-btn>
-          <v-btn :disabled="isEmpty" @click="validate">Valider</v-btn>
-        </template>
-        <template v-else>
-          <v-btn :disabled="sending" @click="previewing = false">Non</v-btn>
-          <v-btn color="primary" :loading="sending" @click="send">Oui</v-btn>
-        </template>
-      </div>
+    </div>
+    <div class="letter-actions">
+      <template v-if="!previewing">
+        <v-btn @click="open = false">Annuler</v-btn>
+        <v-btn :disabled="isEmpty" @click="validate">Valider</v-btn>
+      </template>
+      <template v-else>
+        <v-btn :disabled="sending" @click="previewing = false">Non</v-btn>
+        <v-btn color="primary" :loading="sending" @click="send">Oui</v-btn>
+      </template>
     </div>
     </div>
   </v-dialog>
@@ -297,10 +297,20 @@
 }
 
 .letter-actions {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
   display: flex;
   justify-content: center;
   gap: 24px;
-  padding-top: 24px;
+  padding: 48px 32px 32px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, .9) 60%);
+  pointer-events: none;
+}
+
+.letter-actions > * {
+  pointer-events: auto;
 }
 
 .dialog-content {
@@ -309,7 +319,7 @@
   display: flex;
   flex-direction: column;
   overflow-y: scroll;
-  padding: 32px;
+  padding: 32px 32px 128px;
   background: rgba(0, 0, 0, .8);
   clip-path: none;
 }

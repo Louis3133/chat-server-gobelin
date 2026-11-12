@@ -48,6 +48,20 @@ Take a request of the form :
 
 If successful, return a standard 200 code without output
 
+## Bio du salon
+PUT **/channel/bio?channel=ID**
+
+Authentification requise. **Réservé aux admins (`ADMIN_USERNAMES`) et au propriétaire du salon** (`owner_id`) : 403 sinon,
+404 si le salon n'existe pas. Les espaces autour sont retirés ; 500 caractères au plus (400 au-delà, contrainte de la
+migration 00011). Une bio vide est permise.
+
+```
+{"bio": "Le salon avec tous les BG d'Ecni"}
+```
+
+Renvoie le salon mis à jour. La bio est aussi renvoyée par `GET /channels` et dans `channel` de `GET /channel/system` ;
+le front l'affiche dans la modale ouverte au clic sur le soleil (`web/components/ChannelProfile.vue`).
+
 ## Delete Channel
 DELETE **/channel?channel=ID**
 

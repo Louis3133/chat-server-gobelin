@@ -1,5 +1,5 @@
 <template>
-  <div ref="container" class="scene" :class="{ 'scene--overview': overview }">
+  <div ref="container" class="scene" :class="{ 'scene--overview': overview, 'scene--customizing': customizing }">
     <Teleport to="body"><div ref="tweaksEl" class="tweaks" /></Teleport>
   </div>
 </template>
@@ -48,7 +48,7 @@ const props = defineProps<{
   focusArea: { top: number; bottom: number } | null
   overview: boolean
 }>()
-const emit = defineEmits<{ select: [id: number]; open: [channel: Channel]; center: []; read: [key: string]; rocket: [key: string | null] }>()
+const emit = defineEmits<{ select: [id: number]; open: [channel: Channel]; sun: []; read: [key: string]; rocket: [key: string | null] }>()
 const api = useChatApi()
 
 const container = ref<HTMLDivElement>()
@@ -164,6 +164,7 @@ let frame = 0
 let observer: ResizeObserver
 let downAt = { x: 0, y: 0 }
 let adjustingZoom = false
+let snapOverview = false
 let ready = false
 const planets = new Map<string, PlanetNode>()
 const suns = new Map<string, THREE.Group>()
@@ -409,6 +410,17 @@ const selectionHalo = new THREE.Sprite(new THREE.SpriteMaterial({
 }))
 selectionHalo.visible = false
 
+// Survol d'une planète : même halo, plus discret
+const HOVER_HALO_OPACITY = 0.5
+const hoverHalo = new THREE.Sprite()
+hoverHalo.visible = false
+const syncHoverHalo = () => {
+  hoverHalo.material.dispose()
+  hoverHalo.material = selectionHalo.material.clone()
+  hoverHalo.material.opacity = tweaks.haloOpacity * HOVER_HALO_OPACITY
+}
+syncHoverHalo()
+
 const updateHalo = () => {
   const material = selectionHalo.material
   material.map?.dispose()
@@ -416,6 +428,7 @@ const updateHalo = () => {
   material.color.set(tweaks.haloColor)
   material.opacity = tweaks.haloOpacity
   material.needsUpdate = true
+  syncHoverHalo()
 }
 
 const hoverRing = new THREE.Mesh(
@@ -423,6 +436,7 @@ const hoverRing = new THREE.Mesh(
   new THREE.MeshBasicMaterial({ color: 0xffd54f, side: THREE.DoubleSide }),
 )
 let hoveredSun: THREE.Group | undefined
+let hoveredPlanet: string | null = null
 
 // Utilitaires
 const colorFor = (name: string) => {
@@ -724,6 +738,30 @@ const setHovered = (group?: THREE.Group) => {
   renderer.domElement.style.cursor = group ? 'pointer' : ''
 }
 
+// Dans un salon : survol et clic d'une planète ou de son nom
+const planetsInteractive = () => !props.overview && !props.customizing
+
+const setHoveredPlanet = (k: string | null) => {
+  if (!planetsInteractive()) k = null
+  if (hoveredPlanet === k) return
+  if (hoveredPlanet) planets.get(hoveredPlanet)?.label.element.classList.remove('planet-label--pointed')
+  hoveredPlanet = k
+  if (k) planets.get(k)?.label.element.classList.add('planet-label--pointed')
+}
+
+const selectPlanet = (k: string) => {
+  const node = planets.get(k)
+  if (!node || !planetsInteractive()) return
+  stopFollowing()
+  emit('select', node.mesh.userData.id)
+}
+
+const planetAt = (event: MouseEvent) => {
+  const active = [...planets.entries()].filter(([, n]) => n.key === activeKey)
+  const hit = rayAt(event).intersectObjects(active.map(([, n]) => n.mesh), false)[0]
+  return active.find(([, n]) => n.mesh === hit?.object)?.[0] ?? null
+}
+
 const openSun = (group: THREE.Object3D) => {
   if (props.overview && group.userData.channel) emit('open', group.userData.channel)
 }
@@ -744,10 +782,10 @@ const sunAt = (event: MouseEvent) => {
   return rayAt(event).intersectObjects(hits, false)[0]?.object.userData.sun as THREE.Group | undefined
 }
 
-// Dans un salon, le soleil ramène à la vue du salon quand une planète est sélectionnée
+// Dans un salon, le soleil ouvre la fiche du salon (et ramène à la vue du salon)
 const activeSunAt = (event: MouseEvent) => {
   const sun = suns.get(activeKey)?.children[0]
-  return props.selectedId != null && !!sun && rayAt(event).intersectObject(sun, false).length > 0
+  return !!sun && rayAt(event).intersectObject(sun, false).length > 0
 }
 
 // Orbites : une matière partagée, épaisseur en pixels
@@ -766,6 +804,7 @@ const syncSystem = () => {
   activeKey = props.system ? keyOf(props.system.channel) : 'general'
   activeCenter.copy(where.get(activeKey)?.pos ?? ORIGIN)
   fitOverview([...where.values()].map((w) => w.pos))
+  if (snapOverview) placeOverview()
 
   for (const [key, group] of suns) {
     if (!where.has(key)) {
@@ -848,6 +887,9 @@ const syncPlanet = (
     const label = makeLabel('')
     label.center.set(0.5, 1)
     label.position.set(0, 1.1, 0)
+    label.element.addEventListener('mouseenter', () => setHoveredPlanet(k))
+    label.element.addEventListener('mouseleave', () => { if (hoveredPlanet === k) setHoveredPlanet(null) })
+    label.element.addEventListener('click', () => selectPlanet(k))
     mesh.add(label)
     scene.add(mesh)
     node = { mesh, label, key, center: center.clone(), target: t.pos.clone(), me: p.me }
@@ -914,6 +956,13 @@ const fitOverview = (points: THREE.Vector3[]) => {
 // Écran en hauteur : on recule pour que le salon tienne en largeur
 const channelDistance = () => cameraViews.channel.distance / Math.min(1, camera.aspect)
 const overviewDistance = () => Math.max(cameraViews.overview.distance, overviewFit)
+
+// Arrivée sur le site : la caméra est posée d'emblée sur la vue d'ensemble, sans glisser
+const placeOverview = () => {
+  controls.target.copy(overviewCenter)
+  camera.position.copy(overviewCenter).add(viewDirection(cameraViews.overview).multiplyScalar(overviewDistance()))
+  adjustingZoom = false
+}
 
 // Caméra : suit la sélection, le soleil du salon ouvert ou l'ensemble des salons
 // Personnalisation : on tourne autour de sa planète, sans zoom ni déplacement
@@ -1039,6 +1088,13 @@ const animate = () => {
     selectionHalo.position.copy(selected.mesh.position)
     selectionHalo.scale.setScalar(surfaceOf(selected.mesh) * HALO_SIZE * (1 + Math.sin(now / 400) * 0.02))
   }
+  if (hoveredPlanet && (!planets.has(hoveredPlanet) || !planetsInteractive())) setHoveredPlanet(null)
+  const hovered = hoveredPlanet ? planets.get(hoveredPlanet) : undefined
+  hoverHalo.visible = !!hovered && hovered !== selected
+  if (hovered) {
+    hoverHalo.position.copy(hovered.mesh.position)
+    hoverHalo.scale.setScalar(surfaceOf(hovered.mesh) * HALO_SIZE)
+  }
   for (const [key, group] of suns) {
     const sun = group.children[0]
     const goal = (key === 'general' ? tweaks.sunSize : 1) * (group === hoveredSun ? SUN_HOVER_SCALE : 1)
@@ -1083,7 +1139,10 @@ const onPointerDown = (e: PointerEvent) => { downAt = { x: e.clientX, y: e.clien
 const onPointerMove = (event: PointerEvent) => {
   if (props.customizing) return
   setHovered(props.overview ? sunAt(event) : undefined)
-  if (!props.overview) renderer.domElement.style.cursor = activeSunAt(event) || readable(rocketAt(event)) ? 'pointer' : ''
+  if (props.overview) return
+  const rocket = rocketAt(event)
+  setHoveredPlanet(rocket ? null : planetAt(event))
+  renderer.domElement.style.cursor = hoveredPlanet || activeSunAt(event) || readable(rocket) ? 'pointer' : ''
 }
 
 const onClick = (event: MouseEvent) => {
@@ -1101,11 +1160,10 @@ const onClick = (event: MouseEvent) => {
     if (readable(rocket)) emit('read', rocket.userData.key)
     return
   }
+  const planet = planetAt(event)
+  if (planet) return selectPlanet(planet)
   stopFollowing()
-  const active = [...planets.values()].filter((n) => n.key === activeKey)
-  const hit = rayAt(event).intersectObjects(active.map((n) => n.mesh), false)[0]
-  if (hit) emit('select', hit.object.userData.id)
-  else if (activeSunAt(event)) emit('center')
+  if (activeSunAt(event)) emit('sun')
 }
 
 // Étoiles : chacune scintille doucement à son rythme
@@ -1252,12 +1310,12 @@ onMounted(() => {
   controls.enableDamping = true
   controls.minDistance = 2.5
   controls.maxDistance = MAX_DISTANCE
-  controls.addEventListener('start', () => { adjustingZoom = false })
+  controls.addEventListener('start', () => { adjustingZoom = snapOverview = false })
   controls.maxPolarAngle = Math.PI * 0.49
   lockControls()
 
   stars = makeStars()
-  scene.add(stars, shootingStars, new THREE.AmbientLight(0xffffff, 1.5), orbits, letters, smoke, selectionHalo, hoverRing)
+  scene.add(stars, shootingStars, new THREE.AmbientLight(0xffffff, 1.5), orbits, letters, smoke, selectionHalo, hoverHalo, hoverRing)
   loadRocket()
 
   renderer.domElement.addEventListener('pointerdown', onPointerDown)
@@ -1266,7 +1324,7 @@ onMounted(() => {
   observer = new ResizeObserver(resize)
   observer.observe(el)
   ready = true
-  adjustingZoom = props.overview
+  snapOverview = props.overview
   syncSystem()
   syncLetters()
   animate()
@@ -1350,24 +1408,27 @@ onMounted(() => {
 })
 
 watch(() => [props.system, props.decor, props.channels], () => { syncSystem(); syncLetters() })
-watch(() => props.system?.channel.id, () => { followedKey = null; adjustingZoom = true })
+watch(() => props.system?.channel.id, () => { followedKey = null; adjustingZoom = true; snapOverview = false })
 watch(() => props.messages, syncLetters)
 watch(() => props.followedLetter, (key) => {
   if (!key) return
   followedKey = key
   adjustingZoom = true
+  snapOverview = false
 })
-watch(() => props.selectedId, () => { followedKey = null; adjustingZoom = true })
+watch(() => props.selectedId, () => { followedKey = null; adjustingZoom = true; snapOverview = false })
 watch(() => props.customizing, previewLook, { deep: true })
 watch(() => props.decor, previewLook)
 watch(() => props.customizing?.id, () => {
   adjustingZoom = true
+  snapOverview = false
   if (controls) lockControls()
   setHovered(undefined)
 })
 watch(() => props.overview, () => {
   followedKey = null
   adjustingZoom = true
+  snapOverview = false
   setHovered(undefined)
 })
 
@@ -1425,6 +1486,16 @@ onBeforeUnmount(() => {
 }
 .scene :deep(.planet-label--me) {
   color: #ffd54f;
+}
+.scene:not(.scene--overview):not(.scene--customizing) :deep(.planet-label:not(.planet-label--sun):not(.planet-label--covered)) {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.scene :deep(.planet-label__name) {
+  transition: color 0.15s;
+}
+.scene :deep(.planet-label--pointed .planet-label__name) {
+  color: #d3fbb2;
 }
 .scene--overview :deep(.planet-label--sun) {
   pointer-events: auto;

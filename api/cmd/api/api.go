@@ -167,6 +167,7 @@ func main() {
 	router.HandleFunc("/channel", channelHandler.Create).Methods(http.MethodPost)
 	router.HandleFunc("/channel", channelHandler.Delete).Methods(http.MethodDelete)
 	router.HandleFunc("/channel/enter", channelHandler.EnterChannel).Methods(http.MethodPost)
+	router.HandleFunc("/channel/bio", channelHandler.UpdateBio).Methods(http.MethodPut)
 	router.HandleFunc("/channel/system", messageHandler.System).Methods(http.MethodGet)
 	router.HandleFunc("/channel/message", messageHandler.GetMessages).Methods(http.MethodGet)
 	router.HandleFunc("/channel/message", messageHandler.CreateMessage).Methods(http.MethodPost)

@@ -1,7 +1,7 @@
 <template>
   <div class="app">
     <!-- La scène vit ici, derrière toutes les pages : elle ne se recharge pas à la navigation -->
-    <SolarScene class="background" :system="system" :decor="decor" :channels="channels" :messages="messages" :selected-id="selectedId" :followed-letter="followedLetter" :opened-letter="openedLetter" :customizing="customizing" :focus-area="focusArea" :overview="!system" @select="pick" @open="openChannel" @center="selectedId = null" @read="openedLetter = $event" @rocket="onRocket" />
+    <SolarScene class="background" :system="system" :decor="decor" :channels="channels" :messages="messages" :selected-id="selectedId" :followed-letter="followedLetter" :opened-letter="openedLetter" :customizing="customizing" :focus-area="focusArea" :overview="!system" @select="pick" @open="openChannel" @sun="openSunPanel" @read="openedLetter = $event" @rocket="onRocket" />
     <template v-if="route.path !== '/' && route.path !== '/planet' && !planetView">
       <v-btn v-if="xs" class="logout" icon="mdi-logout" color="white" variant="outlined" title="Déconnexion" aria-label="Déconnexion" @click="logout" />
       <v-btn v-else class="logout" color="white" variant="outlined" prepend-icon="mdi-logout" @click="logout">
@@ -15,7 +15,7 @@
 </template>
 
 <script setup lang="ts">
-const { system, messages, selectedId, profileOpen, clickedRocket, decor, channels, followedLetter, openedLetter, customizing, focusArea } = useScene()
+const { system, messages, selectedId, profileOpen, channelOpen, clickedRocket, decor, channels, followedLetter, openedLetter, customizing, focusArea } = useScene()
 const api = useChatApi()
 const route = useRoute()
 const { xs } = useDisplay()
@@ -34,13 +34,22 @@ const pick = (id: number) => {
   if (!system.value?.planets.some((p) => p.id === id)) return
   selectedId.value = id
   profileOpen.value = true
+  channelOpen.value = false
   clickedRocket.value = null
+}
+
+// Clic sur le soleil du salon : retour à la vue du salon et fiche du salon
+const openSunPanel = () => {
+  selectedId.value = null
+  profileOpen.value = false
+  clickedRocket.value = null
+  channelOpen.value = true
 }
 
 // Clic sur une fusée : la fiche de la planète laisse la place à celle de la fusée
 const onRocket = (key: string | null) => {
   clickedRocket.value = key
-  if (key) profileOpen.value = false
+  if (key) profileOpen.value = channelOpen.value = false
 }
 
 // Clic sur un soleil : rejoindre le salon (sans effet si on y est déjà), puis l'ouvrir ; la page du salon affiche l'erreur s'il y en a une

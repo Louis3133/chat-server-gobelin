@@ -4,8 +4,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"strings"
+	"unicode/utf8"
 
 	"chat-gobelin-api/internal/users"
 	"chat-gobelin-api/internal/channels"
@@ -153,6 +156,69 @@ func (h channelHandler) GetAll(writer http.ResponseWriter, request *http.Request
   writer.Header().Set("Content-Type", "application/json")
   writer.WriteHeader(http.StatusOK)
   writer.Write(result)
+}
+
+type updateBioRequest struct {
+	Bio string `json:"bio"`
+}
+
+// UpdateBio : PUT /channel/bio?channel=ID, réservé aux admins et au propriétaire du salon
+func (h channelHandler) UpdateBio(writer http.ResponseWriter, request *http.Request) {
+	ctx := request.Context()
+
+	user, ok := currentUser(writer, request)
+	if !ok {
+		return
+	}
+
+	channelID, ok := channelIDFromQuery(writer, request)
+	if !ok {
+		return
+	}
+
+	var req updateBioRequest
+	if err := json.NewDecoder(request.Body).Decode(&req); err != nil {
+		http.Error(writer, "invalid body", http.StatusBadRequest)
+		return
+	}
+	req.Bio = strings.TrimSpace(req.Bio)
+	if utf8.RuneCountInString(req.Bio) > channels.MaxBio {
+		http.Error(writer, fmt.Sprintf("bio must be at most %d characters", channels.MaxBio), http.StatusBadRequest)
+		return
+	}
+
+	channel, err := h.channelRepo.GetByID(ctx, channelID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(writer, "Channel not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("Error finding channel: %s", err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	isOwner := channel.OwnerID != nil && *channel.OwnerID == user.ID
+	if !h.admins[user.Username] && !isOwner {
+		http.Error(writer, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	updated, err := h.channelRepo.UpdateBio(ctx, channelID, req.Bio)
+	if err != nil {
+		log.Printf("Error updating channel bio: %s", err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	result, err := json.Marshal(updated)
+	if err != nil {
+		log.Printf("Error marshaling value: %s", err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	writer.Write(result)
 }
 
 // Delete : DELETE /channel?channel=ID, admins uniquement, general protégé

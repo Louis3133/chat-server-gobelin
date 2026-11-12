@@ -3,6 +3,7 @@ export interface Channel {
   name: string
   owner_id?: number | null
   creation_date?: string
+  bio?: string
   member_ids?: number[]
 }
 
@@ -191,6 +192,10 @@ export const useChatApi = () => {
     await request<void>('/user', { method: 'DELETE', params: { user: userId }, responseType: 'text' })
   }
 
+  // PUT /channel/bio?channel=ID -> bio du salon (admins et propriétaire)
+  const updateChannelBio = (channelId: number, bio: string) =>
+    request<Channel>('/channel/bio', { method: 'PUT', params: { channel: channelId }, body: { bio } })
+
   // GET /channel/system -> soleil, planètes et distances de l'utilisateur
   const getSystem = (channelId: number) =>
     request<SolarSystem>('/channel/system', { params: { channel: channelId } })
@@ -225,6 +230,7 @@ export const useChatApi = () => {
     deleteChannel,
     deleteUser,
     getSystem,
+    updateChannelBio,
     getMessages,
     sendMessage,
     removeRocket,

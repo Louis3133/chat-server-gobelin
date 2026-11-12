@@ -1,19 +1,35 @@
 <template>
   <Teleport to="body">
     <div v-if="open" ref="panel" class="planet-profile scene-panel pixel-frame">
-      <div class="planet-profile__header">
-        <div class="planet-profile__titles">
-          <h2 class="text-heading">{{ planet.planet_name || `Planète de ${planet.username}` }}</h2>
-          <p class="text-subtitle-medium">
-            {{ planet.username }}<template v-if="planet.pronouns"> ({{ planet.pronouns }})</template>
-          </p>
-        </div>
-        <div class="planet-profile__actions">
-          <v-btn icon="mdi-information-outline" :title="expanded ? 'Moins d\'infos' : 'Plus d\'infos'" :aria-label="expanded ? 'Moins d\'infos' : 'Plus d\'infos'" :aria-expanded="expanded" @click="toggle" />
-          <v-btn v-if="!planet.me" title="Écrire une lettre" aria-label="Écrire une lettre" @click="emit('write')"><img class="pixel-icon" src="/icons/actions/send.svg" alt=""></v-btn>
-        </div>
+      <h2 class="planet-profile__title text-heading">
+        {{ planet.planet_name || `Planète de ${planet.username}` }}
+        <img class="pixel-icon" src="/icons/actions/earth.svg" alt="">
+      </h2>
+
+      <ul class="planet-profile__infos">
+        <li>
+          <img class="pixel-icon" src="/icons/actions/pseudo.svg" alt="Pseudo">
+          <span class="text-body">{{ planet.me ? `${planet.username} (moi)` : planet.username }}</span>
+        </li>
+        <li v-if="planet.pronouns">
+          <img class="pixel-icon" src="/icons/actions/pronoms.svg" alt="Pronoms">
+          <span class="text-body">{{ planet.pronouns }}</span>
+        </li>
+        <li v-if="planet.bio" class="planet-profile__bio-row">
+          <img class="pixel-icon" src="/icons/actions/bio.svg" alt="Bio">
+          <span class="planet-profile__bio text-body" :class="{ 'planet-profile__bio--full': shown }">{{ planet.bio }}</span>
+        </li>
+      </ul>
+
+      <div v-if="!planet.me" class="planet-profile__ctas">
+        <button class="pixel-btn planet-profile__write" type="button" @click="emit('write')">
+          Envoyer une lettre
+          <img class="pixel-icon" src="/icons/actions/send.svg" alt="">
+        </button>
+        <button class="planet-profile__detail" type="button" :aria-expanded="expanded" @click="toggle">
+          {{ expanded ? 'Masquer le détail' : 'Voir le détail' }}
+        </button>
       </div>
-      <p v-if="planet.bio" class="planet-profile__bio text-body" :class="{ 'planet-profile__bio--full': shown }">{{ planet.bio }}</p>
 
       <div v-if="shown && !planet.me" ref="more" class="planet-profile__more">
         <hr class="planet-profile__separator">
@@ -22,7 +38,7 @@
         <ul v-else class="planet-profile__letters pixel-scroll">
           <li v-for="m in exchanged" :key="m.id">
             <button class="letter-item pixel-frame" type="button" :disabled="!readable(m)" @click="emit('read', m)">
-              <span class="letter-item__planet" :style="{ background: colorOf(m.user_id) }" />
+              <PlanetAvatar :planet="planetOf(m.user_id)" />
               <span class="letter-item__text">
                 <span class="text-body">{{ m.user_id === planet.id ? `Lettre de ${planet.username}` : 'Ta lettre' }}</span>
                 <span class="text-body letter-item__date">{{ status(m) }}</span>
@@ -90,7 +106,7 @@ const exchanged = computed(() => {
 
 const readable = (m: Message) => !!parseLetter(m.content)
 
-const colorOf = (id: number) => system.value?.planets.find((p) => p.id === id)?.color ?? '#d9d9d9'
+const planetOf = (id: number) => system.value?.planets.find((p) => p.id === id)
 
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 
@@ -113,30 +129,71 @@ const status = (m: Message) => {
   flex: none;
 }
 
-.planet-profile__header {
+.planet-profile__title {
   display: flex;
-  align-items: flex-start;
+  justify-content: center;
+  align-items: center;
   gap: var(--space-2);
+  margin-bottom: var(--space-1) !important;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
-.planet-profile__titles {
+.planet-profile__infos {
   display: flex;
-  flex: 1;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.planet-profile__infos li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.planet-profile__bio-row {
+  align-items: flex-start !important;
+}
+
+.planet-profile__ctas {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.planet-profile__write {
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--subtitle-size);
+}
+
+.planet-profile__write .pixel-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.planet-profile__detail {
+  color: var(--color-text);
+  font-size: var(--body-size);
+  text-decoration: underline;
+  transition: color 0.15s;
+}
+
+.planet-profile__detail:hover {
+  color: #d3fbb2;
 }
 
 .planet-profile h2,
 .planet-profile h3,
 .planet-profile p {
   margin: 0;
-}
-
-.planet-profile__actions {
-  display: flex;
-  gap: var(--space-1);
 }
 
 .planet-profile__bio {
@@ -201,13 +258,6 @@ const status = (m: Message) => {
 
 .letter-item:not(:disabled):hover {
   background: rgba(255, 255, 255, 0.1);
-}
-
-.letter-item__planet {
-  flex: none;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
 }
 
 .letter-item__text {

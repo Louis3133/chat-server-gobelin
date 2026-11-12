@@ -6,6 +6,8 @@ export const useScene = () => ({
   selectedId: useState<number | null>('scene-selected', () => null),
   // Modale de la planète cliquée (nom, créateur, bio)
   profileOpen: useState<boolean>('scene-profile-open', () => false),
+  // Modale du salon ouverte au clic sur son soleil (nom, nombre de planètes, bio)
+  channelOpen: useState<boolean>('scene-channel-open', () => false),
   // Fusée cliquée (clé de sa lettre) : son panneau ne s'affiche que pour l'expéditeur d'une lettre en route
   clickedRocket: useState<string | null>('scene-clicked-rocket', () => null),
   decor: useState<SolarSystem | null>('scene-decor', () => null),

@@ -22,6 +22,7 @@
   </template>
   </InfoMenu>
   <RocketPanel v-if="rocketLetter" :letter="rocketLetter" :recipient="rocketLetter.recipient ?? ''" :cancelling="cancelling" @cancel="cancelLetter" @arrived="onArrived" />
+  <ChannelProfile v-if="system" v-model="channelOpen" :channel="system.channel" :planets="system.planets" :editable="canEditChannel" @select="pickFromChannel" @saved="onChannelSaved" @failed="notify" />
   <PlanetProfile v-if="selected" v-model="profileOpen" :planet="selected" :letters="messages" @write="writeSelected" @read="read" />
   <LetterComposer v-if="selected" v-model="composerOpen" :recipient="selected" :channel-id="channelId" @sent="onSent" @failed="notify" />
   <LetterViewer v-if="reading" v-model="readerOpen" :blocks="reading.blocks" :strokes="reading.strokes" :from="reading.from" :removable="canRemove" @remove="removeRocket" />
@@ -55,7 +56,7 @@ const api = useChatApi()
 const channelId = Number(useRoute().params.id)
 
 // La scène plein écran (app.vue) lit cet état partagé
-const { system, messages, selectedId: recipientId, profileOpen, clickedRocket, followedLetter, openedLetter } = useScene()
+const { system, messages, selectedId: recipientId, profileOpen, channelOpen, clickedRocket, followedLetter, openedLetter } = useScene()
 const me = ref<UserMe | null>(null)
 const snackbar = ref(false)
 const snackbarText = ref('')
@@ -107,6 +108,20 @@ const writeTo = (id: number | null) => {
 const writeSelected = () => {
   profileOpen.value = false
   composerOpen.value = true
+}
+
+// Fiche du salon : bio modifiable par les admins et le propriétaire, clic sur une planète de la liste
+const canEditChannel = computed(() => !!me.value && (!!me.value.is_admin || system.value?.channel.owner_id === me.value.id))
+
+const pickFromChannel = (id: number) => {
+  channelOpen.value = false
+  recipientId.value = id
+  profileOpen.value = true
+}
+
+const onChannelSaved = (channel: Channel) => {
+  if (system.value) system.value = { ...system.value, channel: { ...system.value.channel, bio: channel.bio } }
+  notify('Bio du salon enregistrée', 'success')
 }
 
 // Retour à l'étape précédente : de la planète au salon, du salon à la liste
@@ -205,6 +220,7 @@ onBeforeUnmount(() => {
   messages.value = []
   recipientId.value = null
   profileOpen.value = false
+  channelOpen.value = false
   clickedRocket.value = null
   followedLetter.value = null
   openedLetter.value = null

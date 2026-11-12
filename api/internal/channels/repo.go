@@ -18,6 +18,7 @@ type Repo interface {
 	Create(ctx context.Context, name string, ownerID *int64) (*Channel, error)
 	AddUserToChannel(ctx context.Context, channel Channel, user users.User) error
 	IsMember(ctx context.Context, channelID int64, userID int64) (bool, error)
+	UpdateBio(ctx context.Context, id int64, bio string) (*Channel, error)
 	Delete(ctx context.Context, id int64) error
 }
 
@@ -36,7 +37,8 @@ func (r *repo) GetByUser(ctx context.Context, user users.User) ([]Channel, error
 			a.id,
 			a.name,
 			a.owner_id,
-			a.creation_date
+			a.creation_date,
+			a.bio
 		FROM channels a
 		JOIN user_channels b ON a.id = b.channel_id
 		WHERE b.user_id = ?`
@@ -54,7 +56,8 @@ func (r *repo) GetAllChannels(ctx context.Context) ([]Channel, error) {
 	query := `SELECT
 			id,
 			name,
-			owner_id
+			owner_id,
+			bio
 		FROM channels`
 
 	query = r.db.Rebind(query)
@@ -87,7 +90,8 @@ func (r *repo) GetByName(ctx context.Context, name string) (*Channel, error) {
 			id,
 			name,
 			owner_id,
-			creation_date
+			creation_date,
+			bio
 		FROM channels
 		WHERE name = ?`
 
@@ -105,7 +109,8 @@ func (r *repo) GetByID(ctx context.Context, id int64) (*Channel, error) {
 			id,
 			name,
 			owner_id,
-			creation_date
+			creation_date,
+			bio
 		FROM channels
 		WHERE id = ?`
 
@@ -121,7 +126,7 @@ func (r *repo) GetByID(ctx context.Context, id int64) (*Channel, error) {
 func (r *repo) Create(ctx context.Context, name string, ownerID *int64) (*Channel, error) {
 	query := `INSERT INTO channels
 		(name, owner_id, creation_date) VALUES (?, ?, NOW())
-		RETURNING id, name, owner_id, creation_date`
+		RETURNING id, name, owner_id, creation_date, bio`
 
 	query = r.db.Rebind(query)
 	var channel Channel
@@ -160,6 +165,19 @@ func (r *repo) IsMember(ctx context.Context, channelID int64, userID int64) (boo
 		return false, fmt.Errorf("Error checking membership: %w", err)
 	}
 	return member, nil
+}
+
+func (r *repo) UpdateBio(ctx context.Context, id int64, bio string) (*Channel, error) {
+	query := `UPDATE channels SET bio = ? WHERE id = ?
+		RETURNING id, name, owner_id, creation_date, bio`
+
+	query = r.db.Rebind(query)
+	var channel Channel
+	err := r.db.GetContext(ctx, &channel, query, bio, id)
+	if err != nil {
+		return nil, fmt.Errorf("Error updating channel bio: %w", err)
+	}
+	return &channel, nil
 }
 
 // Delete supprime le salon et son contenu (messages et user_channels sans clé étrangère : à la main)
