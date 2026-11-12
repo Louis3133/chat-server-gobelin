@@ -2,7 +2,8 @@
   <div class="planet-editor">
     <header ref="headerEl" class="editor-header pixel-frame">
       <div class="header-row">
-        <v-btn title="Quitter" aria-label="Quitter" @click="navigateTo('/channels')"><img class="pixel-icon" src="/icons/actions/close.svg" alt=""></v-btn>
+        <v-btn v-if="step === 1" title="Quitter" aria-label="Quitter" @click="navigateTo('/channels')"><img class="pixel-icon" src="/icons/actions/close.svg" alt=""></v-btn>
+        <v-btn v-else title="Retour" aria-label="Retour" @click="step--"><img class="pixel-icon" src="/icons/actions/back.svg" alt=""></v-btn>
         <h1 class="text-subtitle">Personnalisation</h1>
         <span class="text-body">{{ step }}/{{ STEPS.length }}</span>
       </div>
@@ -18,52 +19,83 @@
       <div v-if="look" class="panel-body pixel-scroll">
         <template v-if="step === 1">
           <label class="name-field">
-            <span class="name-label">Nom de la planète</span>
-            <input v-model="profile.planet_name" :maxlength="NAME_MAX" autocomplete="off">
+            <span v-if="profile.planet_name" class="name-label">Nom de la planète</span>
+            <input v-model="profile.planet_name" placeholder="Nom de la planète" autocomplete="off">
           </label>
-          <div class="field-help text-body" :class="{ invalid: !nameAllowed }">
-            <span>Lettres, chiffres et espaces</span>
-            <span>{{ profile.planet_name.length }}/{{ NAME_MAX }}</span>
+          <div class="field-help text-body">
+            <span :class="{ invalid: !nameAllowed }">Lettres, chiffres et espaces</span>
+            <span :class="{ invalid: nameTooLong }">{{ profile.planet_name.length }}/{{ NAME_MAX }}</span>
           </div>
         </template>
 
         <template v-else-if="step === 2">
-          <div class="color-row mb-4">
-            <span>Texture</span>
-            <div class="d-flex ga-2">
-              <v-btn size="small" variant="outlined" prepend-icon="mdi-image" @click="picker?.click()">Importer</v-btn>
-              <v-btn v-if="customizing?.texture" size="small" variant="text" title="Retirer l'image" aria-label="Retirer l'image" @click="removeTexture"><img class="pixel-icon" src="/icons/actions/close.svg" alt=""></v-btn>
-            </div>
-            <input ref="picker" type="file" accept="image/*" hidden @change="onFile">
+          <div class="tabs" role="tablist">
+            <button class="pixel-tab" :class="{ off: surfaceTab !== 'colors' }" type="button" role="tab" :aria-selected="surfaceTab === 'colors'" @click="surfaceTab = 'colors'">Couleurs</button>
+            <button class="pixel-tab" :class="{ off: surfaceTab !== 'image' }" type="button" role="tab" :aria-selected="surfaceTab === 'image'" @click="surfaceTab = 'image'">Image</button>
           </div>
-          <div class="color-row">
-            <span>Couleur</span>
-            <input v-model="look.planet_color" type="color" aria-label="Couleur de la planète">
+
+          <div v-if="surfaceTab === 'colors'" class="swatches">
+            <button
+              v-for="color in PRESET_COLORS"
+              :key="color"
+              class="swatch-btn"
+              :class="{ selected: look.planet_color === color }"
+              type="button"
+              :title="color"
+              :aria-label="`Couleur ${color}`"
+              @click="look.planet_color = color"
+            >
+              <span class="swatch-fill" :style="{ background: color }" />
+            </button>
+            <label class="swatch-btn custom" :class="{ selected: customColor }" title="Autre couleur">
+              <span v-if="customColor" class="swatch-fill" :style="{ background: look.planet_color }" />
+              <span class="swatch-plus">+</span>
+              <input v-model="look.planet_color" type="color" aria-label="Autre couleur">
+            </label>
           </div>
+
+          <div v-else class="image-tab">
+            <button class="pixel-btn wide" type="button" @click="picker?.click()">{{ customizing?.texture ? "Changer d'image" : 'Importer une image' }}</button>
+            <button v-if="customizing?.texture" class="pixel-btn wide off" type="button" @click="removeTexture">Retirer l'image</button>
+          </div>
+          <input ref="picker" type="file" accept="image/*" hidden @change="onFile">
         </template>
 
         <template v-else-if="step === 3">
-          <v-slider v-model="look.planet_size" label="Taille" :min="0.4" :max="1" :step="0.01" color="white" hide-details />
+          <p class="slider-label text-subtitle-medium">Taille de la planète</p>
+          <PixelSlider v-model="look.planet_size" label="Taille de la planète" :min="0.4" :max="1" :step="0.01" />
         </template>
 
         <template v-else-if="step === 4">
-          <v-btn-toggle v-model="ornament" class="mb-4" mandatory divided variant="outlined" density="comfortable">
-            <v-btn value="none">Rien</v-btn>
-            <v-btn value="moon">Lune</v-btn>
-            <v-btn value="rings">Anneaux</v-btn>
-          </v-btn-toggle>
+          <div class="tabs three" role="tablist">
+            <button
+              v-for="option in ORNAMENTS"
+              :key="option.value"
+              class="pixel-tab"
+              :class="{ off: ornament !== option.value }"
+              type="button"
+              role="tab"
+              :aria-selected="ornament === option.value"
+              @click="ornament = option.value"
+            >
+              {{ option.label }}
+            </button>
+          </div>
           <template v-if="look.planet_rings">
             <div class="color-row mb-2">
-              <span>Couleur des anneaux</span>
-              <input v-model="look.planet_ring_color" type="color" aria-label="Couleur des anneaux">
+              <span>Couleur de l’anneau</span>
+              <input v-model="look.planet_ring_color" type="color" aria-label="Couleur de l’anneau">
             </div>
-            <v-slider v-model="look.planet_ring_size" label="Taille des anneaux" :min="1.5" :max="4" :step="0.05" color="white" hide-details />
+            <p class="slider-label text-subtitle-medium">Taille de l’anneau</p>
+            <PixelSlider v-model="look.planet_ring_size" label="Taille de l’anneau" :min="1.5" :max="4" :step="0.05" />
           </template>
         </template>
 
         <template v-else-if="step === 5">
-          <v-slider v-model="look.planet_spin" label="Rotation" :min="-0.1" :max="0.1" :step="0.001" color="white" hide-details />
-          <v-slider v-model="look.planet_tilt" label="Inclinaison" :min="-1.2" :max="1.2" :step="0.05" color="white" hide-details />
+          <p class="slider-label text-subtitle-medium">Vitesse de la planète</p>
+          <PixelSlider v-model="look.planet_spin" label="Vitesse de la planète" :min="-0.1" :max="0.1" :step="0.001" />
+          <p class="slider-label text-subtitle-medium">Rotation de la planète</p>
+          <PixelSlider v-model="look.planet_tilt" label="Rotation de la planète" :min="-1.2" :max="1.2" :step="0.05" />
         </template>
 
         <template v-else>
@@ -75,23 +107,14 @@
                   <span v-if="line.color" class="swatch" :style="{ background: line.color }" />
                   {{ line.value }}
                 </span>
-                <span class="recap-edit">Modifier</span>
+                <img class="pixel-icon" src="/icons/actions/edit.svg" alt="">
               </button>
             </li>
           </ul>
-          <label class="name-field mb-2">
-            <span class="name-label">Tes pronoms (facultatif)</span>
-            <input v-model="profile.pronouns" maxlength="30" autocomplete="off">
-          </label>
-          <label class="name-field">
-            <span class="name-label">Ta bio (facultatif)</span>
-            <textarea v-model="profile.bio" maxlength="500" rows="2" />
-          </label>
         </template>
       </div>
 
       <div class="actions">
-        <button v-if="step > 1" class="pixel-btn back" type="button" title="Retour" @click="step--">Retour</button>
         <button v-if="step < STEPS.length" class="pixel-btn next" type="button" :disabled="!canContinue" @click="step++">Continuer</button>
         <button v-else class="pixel-btn next" type="button" :disabled="!canContinue || saving" @click="save">{{ saving ? 'Lancement…' : "C'est mon monde" }}</button>
       </div>
@@ -117,21 +140,32 @@ const profile = ref<Profile>({ planet_name: '', pronouns: '', bio: '' })
 
 const STEPS = [
   { question: "Comment s'appelle ta planète\u00a0?", hint: "C'est le nom que verront les autres planètes du système" },
-  { question: 'De quoi est-elle faite\u00a0?', hint: 'Choisis une couleur ou importe une image pour sa surface' },
-  { question: 'Quelle taille fait-elle\u00a0?', hint: 'Petite ou géante, à toi de voir' },
-  { question: 'Une lune ou des anneaux\u00a0?', hint: 'Ajoute-lui un compagnon, ou garde-la seule' },
+  { question: 'À quoi ressemble ta planète\u00a0?', hint: 'Choisis une couleur et/ou une image.' },
+  { question: 'Quelle taille pour ta planète\u00a0?', hint: 'C’est la taille que verront toutes les autres planètes du système.' },
+  { question: 'Une lune ou un anneau\u00a0?', hint: 'Ajoute-lui un compagnon, ou garde-la seule' },
   { question: 'À quelle vitesse tourne-t-elle\u00a0?', hint: 'Lentement ou vite, dans un sens ou dans l\'autre' },
-  { question: 'Voici ta planète', hint: 'Vérifie tes choix avant de la lancer dans le système' },
+  { question: 'Ta planète est prête', hint: 'Tu pourras modifier tout cela plus tard\u00a0!' },
 ]
 const step = ref(1)
 
 // Nom : obligatoire, lettres, chiffres et espaces
 const NAME_MAX = 16
 const nameAllowed = computed(() => /^[\p{L}\p{N} ]*$/u.test(profile.value.planet_name))
-const nameValid = computed(() => nameAllowed.value && profile.value.planet_name.trim().length > 0 && profile.value.planet_name.length <= NAME_MAX)
+const nameTooLong = computed(() => profile.value.planet_name.length > NAME_MAX)
+const nameValid = computed(() => nameAllowed.value && profile.value.planet_name.trim().length > 0 && !nameTooLong.value)
 const canContinue = computed(() => !!look.value && (step.value !== 1 || nameValid.value))
 
-// Anneaux ou lune, jamais les deux (l'API le refuse aussi)
+// Surface : couleurs de base ou couleur libre (+), image importée teintée par la couleur
+const PRESET_COLORS = ['#ffffff', '#8d9db6', '#3d5a80', '#5fa8d3', '#81b29a', '#f2cc8f', '#e07a5f', '#c1121f', '#9b5de5']
+const surfaceTab = ref<'colors' | 'image'>('colors')
+const customColor = computed(() => !!look.value && !PRESET_COLORS.includes(look.value.planet_color.toLowerCase()))
+
+// Anneau ou lune, jamais les deux (l'API le refuse aussi)
+const ORNAMENTS = [
+  { value: 'none', label: 'Rien' },
+  { value: 'moon', label: 'Lune' },
+  { value: 'rings', label: 'Anneau' },
+] as const
 const ornament = computed({
   get: () => (look.value?.planet_rings ? 'rings' : look.value?.planet_moon ? 'moon' : 'none'),
   set: (value) => {
@@ -150,7 +184,7 @@ const recap = computed(() => {
     { label: 'Nom', value: profile.value.planet_name.trim() || 'Sans nom' },
     { label: 'Apparence', value: customizing.value?.texture ? 'Image importée' : 'Couleur', color: l.planet_color },
     { label: 'Taille', value: `${Math.round(l.planet_size * 100)} %` },
-    { label: 'Ornement', value: l.planet_moon ? 'Une lune' : l.planet_rings ? 'Des anneaux' : 'Aucun', color: l.planet_rings ? l.planet_ring_color : undefined },
+    { label: 'Ornement', value: l.planet_moon ? 'Une lune' : l.planet_rings ? 'Un anneau' : 'Aucun', color: l.planet_rings ? l.planet_ring_color : undefined },
     { label: 'Rotation', value: spin ? `${spin} %, ${l.planet_spin > 0 ? 'sens direct' : 'sens inverse'}` : 'Immobile' },
   ]
 })
@@ -246,6 +280,7 @@ onMounted(async () => {
     profile.value = { planet_name: me.planet_name ?? '', pronouns: me.pronouns ?? '', bio: me.bio ?? '' }
     const version = me.planet_texture_version ?? 0
     customizing.value = { id: me.id, look: lookOf(me), texture: version ? api.textureUrl(me.id, version) : null }
+    if (version) surfaceTab.value = 'image'
   } catch (error) {
     notify(error)
   }
@@ -319,7 +354,7 @@ onBeforeUnmount(() => {
 }
 
 .progress span.done {
-  background: #b5e48c;
+  background: var(--Zib);
 }
 
 .editor-panel {
@@ -347,9 +382,16 @@ onBeforeUnmount(() => {
 .name-field {
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  min-height: 52px;
   padding: 4px var(--space-1);
   background: #fff;
   color: #000;
+}
+
+.name-field input::placeholder {
+  color: #737373;
+  opacity: 1;
 }
 
 .name-label {
@@ -371,7 +413,7 @@ onBeforeUnmount(() => {
   opacity: 0.8;
 }
 
-.field-help.invalid {
+.field-help .invalid {
   color: #ff8a80;
   opacity: 1;
 }
@@ -391,6 +433,105 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+.slider-label {
+  margin-bottom: var(--space-1);
+}
+
+.pixel-slider + .slider-label {
+  margin-top: var(--space-3);
+}
+
+.tabs {
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.tabs.three {
+  gap: var(--space-2);
+}
+
+.tabs .pixel-tab,
+.image-tab .wide {
+  width: 100% !important;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--subtitle-size);
+}
+
+.pixel-btn.off {
+  border-image: linear-gradient(#fff, #fff) 1;
+  background: #232323 !important;
+}
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--space-2);
+}
+
+.swatch-btn {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  aspect-ratio: 1;
+  color: #fff;
+  cursor: pointer;
+}
+
+.swatch-btn::before,
+.swatch-fill {
+  content: '';
+  position: absolute;
+  mask-size: 100% 100%;
+  -webkit-mask-size: 100% 100%;
+}
+
+.swatch-btn::before {
+  inset: 0;
+  z-index: 1;
+  background: currentColor;
+  mask-image: url('/pixel-ring.svg');
+  -webkit-mask-image: url('/pixel-ring.svg');
+}
+
+.swatch-fill {
+  inset: 18.75%;
+  mask-image: url('/pixel-disc.svg');
+  -webkit-mask-image: url('/pixel-disc.svg');
+}
+
+.swatch-btn.selected {
+  color: #b5e48c;
+}
+
+.swatch-btn.selected .swatch-fill {
+  inset: 12.5%;
+}
+
+.swatch-plus {
+  position: relative;
+  z-index: 1;
+  font-size: 24px;
+  line-height: 1;
+  text-shadow: 0 0 3px #000;
+}
+
+.swatch-btn input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.image-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .recap {
   list-style: none;
   padding: 0;
@@ -403,15 +544,8 @@ onBeforeUnmount(() => {
   gap: var(--space-1);
   width: 100%;
   padding: var(--space-1) 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
   color: inherit;
   text-align: left;
-}
-
-.recap-edit {
-  font-size: 12px;
-  opacity: 0.6;
-  text-decoration: underline;
 }
 
 .recap-label {
@@ -447,10 +581,6 @@ onBeforeUnmount(() => {
   font-size: var(--subtitle-size);
 }
 
-.actions .back {
-  padding: var(--space-2);
-}
-
 .actions button:disabled {
   opacity: 0.5;
   cursor: default;
@@ -469,6 +599,15 @@ onBeforeUnmount(() => {
   .editor-panel {
     padding: var(--space-3);
     max-height: 55vh;
+  }
+
+  .swatches {
+    grid-template-columns: repeat(5, 40px);
+    justify-content: center;
+  }
+
+  .swatch-plus {
+    font-size: 18px;
   }
 }
 

@@ -10,22 +10,30 @@
       <form v-else-if="mode === 'pseudo'" class="auth-form" @submit.prevent="onPseudo">
         <h1 class="text-heading">Choisir son pseudo</h1>
         <label class="field">
-          <span class="field-label">Pseudo</span>
-          <input v-model="pseudo" :maxlength="pseudoMax" autocomplete="nickname" spellcheck="false" autofocus>
+          <span v-if="pseudo" class="field-label">Pseudo</span>
+          <input v-model="pseudo" placeholder="Pseudo" :maxlength="pseudoMax" autocomplete="nickname" spellcheck="false" autofocus>
         </label>
-        <button class="pixel-btn wide" type="submit" :disabled="!pseudo.trim()">Continuer</button>
+        <label class="field">
+          <span v-if="pronouns" class="field-label">Tes pronoms (facultatif)</span>
+          <input v-model="pronouns" placeholder="Tes pronoms (facultatif)" :readonly="loading" maxlength="30" autocomplete="off">
+        </label>
+        <label class="field">
+          <span v-if="bio" class="field-label">Ta bio (facultatif)</span>
+          <textarea v-model="bio" placeholder="Ta bio (facultatif)" :readonly="loading" maxlength="500" rows="3" />
+        </label>
+        <button class="pixel-btn wide" type="submit" :disabled="loading || !pseudo.trim()">{{ loading ? '…' : 'Continuer' }}</button>
       </form>
 
       <form v-else class="auth-form" @submit.prevent="onSubmit">
         <h1 class="text-heading">{{ mode === 'login' ? 'Connexion' : 'Créer un compte' }}</h1>
         <label class="field">
-          <span class="field-label">Nom d'utilisateur</span>
-          <input v-model="username" :readonly="loading" autocomplete="username" autocapitalize="off" spellcheck="false">
+          <span v-if="username" class="field-label">Nom d'utilisateur</span>
+          <input v-model="username" placeholder="Nom d'utilisateur" :readonly="loading" autocomplete="username" autocapitalize="off" spellcheck="false">
         </label>
         <div class="password-row">
           <label class="field">
-            <span class="field-label">Mot de passe</span>
-            <input v-model="password" :readonly="loading" :type="showPassword ? 'text' : 'password'" :autocomplete="mode === 'login' ? 'current-password' : 'new-password'">
+            <span v-if="password" class="field-label">Mot de passe</span>
+            <input v-model="password" placeholder="Mot de passe" :readonly="loading" :type="showPassword ? 'text' : 'password'" :autocomplete="mode === 'login' ? 'current-password' : 'new-password'">
           </label>
           <button class="eye" type="button" :aria-label="showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'" @click="showPassword = !showPassword">
             <v-icon :icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'" color="black" />
@@ -54,6 +62,8 @@ const password = ref('')
 const showPassword = ref(false)
 const pseudo = ref('')
 const pseudoMax = PSEUDO_MAX
+const pronouns = ref('')
+const bio = ref('')
 const snackbar = ref(false)
 const snackbarText = ref('')
 
@@ -91,9 +101,19 @@ const onSubmit = async () => {
 }
 
 const onPseudo = async () => {
-  if (!pseudo.value.trim()) return
-  savePseudo(pseudo.value)
-  await navigateTo('/welcome')
+  if (loading.value || !pseudo.value.trim()) return
+  loading.value = true
+  try {
+    if (pronouns.value.trim() || bio.value.trim()) {
+      await api.updateProfile({ planet_name: '', pronouns: pronouns.value, bio: bio.value })
+    }
+    savePseudo(pseudo.value)
+    await navigateTo('/welcome')
+  } catch (error) {
+    fail(error)
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(async () => {
@@ -164,12 +184,20 @@ onMounted(async () => {
   color: #000;
 }
 
+.field input::placeholder,
+.field textarea::placeholder {
+  color: #737373;
+  opacity: 1;
+}
+
 .field-label {
   font-size: 11px;
   opacity: 0.7;
 }
 
-.field input {
+.field input,
+.field textarea {
+  resize: none;
   color: #000;
   font-size: var(--body-size);
   outline: none;

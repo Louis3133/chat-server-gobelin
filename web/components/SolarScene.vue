@@ -574,9 +574,9 @@ const addLookFolder = (name: string, look: Look) => {
   folder.addBinding(look, 'color', { label: 'Couleur' })
   folder.addBinding(look, 'texture', { label: 'Texture', view: 'texture', height: 80, showMonitor: true })
   folder.addBinding(look, 'tilt', { label: 'Inclinaison', min: -1.2, max: 1.2, step: 0.05 })
-  folder.addBinding(look, 'rings', { label: 'Anneaux' })
-  folder.addBinding(look, 'ringColor', { label: 'Couleur anneaux' })
-  folder.addBinding(look, 'ringSize', { label: 'Taille anneaux', min: 1.5, max: 4, step: 0.05 })
+  folder.addBinding(look, 'rings', { label: 'Anneau' })
+  folder.addBinding(look, 'ringColor', { label: 'Couleur anneau' })
+  folder.addBinding(look, 'ringSize', { label: 'Taille anneau', min: 1.5, max: 4, step: 0.05 })
   folder.addBinding(look, 'moon', { label: 'Lune' })
   folder.addBinding(look, 'spin', { label: 'Rotation', min: -0.1, max: 0.1, step: 0.001 })
   folder.on('change', () => {

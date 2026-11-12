@@ -17,6 +17,7 @@
   --btn-stroke: linear-gradient(to top, #737373, #ffffff);
   --btn-fill: linear-gradient(to top, #232323 35%, #4d4d4d 75%);
   --btn-fill-hover: linear-gradient(to top, #303030 35%, #636363 75%);
+  --Zib: radial-gradient(50% 50% at 50% 50%, #d3fbb2 43.75%, #7d956a 100%);
 }
 
 body {
@@ -90,6 +91,41 @@ body {
   .pixel-btn:not(:disabled):hover,
   .v-btn.v-btn:not(.v-tab):not(.v-btn--disabled):hover {
     background: var(--btn-fill-hover) !important;
+  }
+}
+
+/* Onglets : coins de 3 pixels en haut à gauche et en bas à droite */
+.pixel-tab {
+  --u: var(--stroke-width);
+  position: relative;
+  padding: var(--space-1) var(--space-2);
+  background: var(--btn-fill);
+  color: var(--color-text);
+  clip-path: polygon(
+    calc(var(--u) * 4) 0, calc(100% - var(--u)) 0, calc(100% - var(--u)) var(--u), 100% var(--u),
+    100% calc(100% - var(--u) * 4), calc(100% - var(--u)) calc(100% - var(--u) * 4), calc(100% - var(--u)) calc(100% - var(--u) * 3), calc(100% - var(--u) * 2) calc(100% - var(--u) * 3), calc(100% - var(--u) * 2) calc(100% - var(--u) * 2), calc(100% - var(--u) * 3) calc(100% - var(--u) * 2), calc(100% - var(--u) * 3) calc(100% - var(--u)), calc(100% - var(--u) * 4) calc(100% - var(--u)), calc(100% - var(--u) * 4) 100%,
+    var(--u) 100%, var(--u) calc(100% - var(--u)), 0 calc(100% - var(--u)),
+    0 calc(var(--u) * 4), var(--u) calc(var(--u) * 4), var(--u) calc(var(--u) * 3), calc(var(--u) * 2) calc(var(--u) * 3), calc(var(--u) * 2) calc(var(--u) * 2), calc(var(--u) * 3) calc(var(--u) * 2), calc(var(--u) * 3) var(--u), calc(var(--u) * 4) var(--u)
+  );
+  cursor: pointer;
+}
+
+.pixel-tab::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: calc(var(--stroke-width) * 4) solid transparent;
+  border-image: url('/pixel-tab.svg') 4 / calc(var(--stroke-width) * 4) stretch;
+  pointer-events: none;
+}
+
+.pixel-tab.off {
+  background: #232323;
+}
+
+@media (hover: hover) {
+  .pixel-tab:hover {
+    background: var(--btn-fill-hover);
   }
 }
 
