@@ -2,6 +2,7 @@ package messages
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"chat-gobelin-api/internal/users"
@@ -13,6 +14,7 @@ import (
 type Repo interface {
 	GetForUser(ctx context.Context, channel channels.Channel, user users.User) ([]Message, error)
 	Create(ctx context.Context, content string, channel channels.Channel, user users.User) (*Message, error)
+	RemoveRocket(ctx context.Context, id int64, recipient users.User) error
 }
 
 type repo struct {
@@ -44,7 +46,8 @@ func (r *repo) GetForUser(ctx context.Context, channel channels.Channel, user us
 				rc.username AS recipient,
 				a.creation_date,
 				a.deliver_at,
-				(a.deliver_at > NOW()) AS in_transit
+				(a.deliver_at > NOW()) AS in_transit,
+				a.rocket_removed
 			FROM messages a
 			JOIN users s ON s.id = a.user_id
 			LEFT JOIN users rc ON rc.id = a.recipient_id
@@ -76,4 +79,17 @@ func (r *repo) Create(ctx context.Context, content string, channel channels.Chan
 	}
 	message.User = user.Username
 	return &message, nil
+}
+
+// RemoveRocket retire la fusée d'une lettre arrivée, seulement pour son destinataire (sql.ErrNoRows sinon)
+func (r *repo) RemoveRocket(ctx context.Context, id int64, recipient users.User) error {
+	res, err := r.db.ExecContext(ctx, r.db.Rebind(`UPDATE messages SET rocket_removed = TRUE
+		WHERE id = ? AND recipient_id = ? AND deliver_at <= NOW()`), id, recipient.ID)
+	if err != nil {
+		return fmt.Errorf("Error removing rocket: %w", err)
+	}
+	if n, err := res.RowsAffected(); err != nil || n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }

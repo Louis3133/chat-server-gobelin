@@ -52,6 +52,21 @@ Une étape = une session de travail courte. Cocher quand c'est terminé. Lire `d
 - [x] Scène plein écran en fond dès la page de connexion (décor des habitants publics, caméra libre, étoiles)
 - [ ] Essai visuel dans le navigateur de la scène : seul `nuxt build` a été vérifié
 
+## 5 bis. Personnalisation de la planète
+- [x] Migration 00005 : inclinaison, couleur et taille des anneaux, vitesse de rotation (couleur, taille, anneaux existaient déjà)
+- [x] `PUT /me/planet` (apparence complète, modifiable à tout moment), champs renvoyés par `/users`, `/me`, `/channel/system`
+- [x] Page `/planet` après les dialogues d'accueil : caméra sur sa planète de `general`, aperçu en direct ; accessible ensuite depuis « Mes salons »
+- [ ] Essai dans le navigateur : seuls `nuxt build` et l'API (Postgres jetable) ont été vérifiés
+- [x] Page en 3 étapes (texture et couleur ; taille, rotation, inclinaison ; anneaux ou lune) ; lune proportionnelle à la planète, exclusive avec les anneaux (migration 00007)
+- [x] Texture importée : réduite par le navigateur (JPEG 256×128), stockée dans Postgres (migration 00006, pas de service externe), servie par `GET /user/texture` (publique)
+- [ ] Les autres navigateurs ne voient une nouvelle apparence qu'au rechargement (pas de temps réel, cf. étape 6)
+
+## 5 ter. Lettres dans la scène
+- [x] Caméra sur la fusée d'une lettre qu'on vient d'envoyer
+- [x] Le destinataire clique sur une fusée posée : le nez s'ouvre et la lettre s'affiche
+- [x] Retirer la fusée de sa planète (« pouf »), la lettre reste (migration 00008, `DELETE /channel/message/rocket`)
+- [ ] Essai dans le navigateur (ouverture du nez, pouf) : seuls `nuxt build` et l'API (Postgres jetable) ont été vérifiés
+
 ## 6. Finitions
 - [ ] Temps réel (polling puis WebSocket si besoin)
 - [ ] Textures, sons, polish visuel

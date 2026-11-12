@@ -1,0 +1,123 @@
+/* UI kit : couleurs, espacements, coins pixel */
+:root {
+  --color-text: #ffffff;
+  --Klaus: rgba(43, 43, 43, 0.7);
+
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-5: 40px;
+  --space-6: 48px;
+  --space-8: 64px;
+
+  --frame-width: 5px;
+  --stroke-width: 3px;
+
+  --btn-stroke: linear-gradient(to top, #737373, #ffffff);
+  --btn-fill: linear-gradient(to top, #232323 35%, #4d4d4d 75%);
+}
+
+body {
+  color: var(--color-text);
+}
+
+.pixel-corners,
+.pixel-frame,
+.v-card,
+.v-menu > .v-overlay__content,
+.pixel-btn,
+.v-btn.v-btn:not(.v-tab) {
+  border-radius: 0 !important;
+}
+
+.pixel-corners,
+.pixel-frame,
+.v-card,
+.v-menu > .v-overlay__content {
+  --c: var(--frame-width);
+  clip-path: polygon(
+    0 calc(var(--c) * 3), var(--c) calc(var(--c) * 3), var(--c) calc(var(--c) * 2), calc(var(--c) * 2) calc(var(--c) * 2), calc(var(--c) * 2) var(--c), calc(var(--c) * 3) var(--c), calc(var(--c) * 3) 0,
+    calc(100% - var(--c) * 3) 0, calc(100% - var(--c) * 3) var(--c), calc(100% - var(--c) * 2) var(--c), calc(100% - var(--c) * 2) calc(var(--c) * 2), calc(100% - var(--c)) calc(var(--c) * 2), calc(100% - var(--c)) calc(var(--c) * 3), 100% calc(var(--c) * 3),
+    100% calc(100% - var(--c) * 3), calc(100% - var(--c)) calc(100% - var(--c) * 3), calc(100% - var(--c)) calc(100% - var(--c) * 2), calc(100% - var(--c) * 2) calc(100% - var(--c) * 2), calc(100% - var(--c) * 2) calc(100% - var(--c)), calc(100% - var(--c) * 3) calc(100% - var(--c)), calc(100% - var(--c) * 3) 100%,
+    calc(var(--c) * 3) 100%, calc(var(--c) * 3) calc(100% - var(--c)), calc(var(--c) * 2) calc(100% - var(--c)), calc(var(--c) * 2) calc(100% - var(--c) * 2), var(--c) calc(100% - var(--c) * 2), var(--c) calc(100% - var(--c) * 3), 0 calc(100% - var(--c) * 3)
+  );
+}
+
+/* Modales et panneaux */
+.pixel-frame,
+.v-card:not(.v-card .v-card),
+.v-menu > .v-overlay__content {
+  border: var(--frame-width) solid transparent;
+  border-image: url('/pixel-frame.svg') 3 / calc(var(--frame-width) * 3) stretch;
+  background: var(--Klaus);
+}
+
+/* Boutons */
+.pixel-btn,
+.v-btn.v-btn:not(.v-tab) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: fit-content !important;
+  height: auto !important;
+  min-width: 0;
+  padding: var(--space-1);
+  border: var(--stroke-width) solid;
+  border-image: var(--btn-stroke) 1;
+  border-radius: 0;
+  background: var(--btn-fill) !important;
+  color: var(--color-text) !important;
+  box-shadow: none;
+  clip-path: polygon(
+    0 var(--stroke-width), var(--stroke-width) var(--stroke-width), var(--stroke-width) 0,
+    calc(100% - var(--stroke-width)) 0, calc(100% - var(--stroke-width)) var(--stroke-width), 100% var(--stroke-width),
+    100% calc(100% - var(--stroke-width)), calc(100% - var(--stroke-width)) calc(100% - var(--stroke-width)), calc(100% - var(--stroke-width)) 100%,
+    var(--stroke-width) 100%, var(--stroke-width) calc(100% - var(--stroke-width)), 0 calc(100% - var(--stroke-width))
+  );
+  font-size: var(--body-size);
+  font-weight: var(--body-weight);
+  line-height: normal;
+  letter-spacing: normal;
+  text-align: center;
+  text-transform: none;
+  cursor: pointer;
+}
+
+/* Défilement */
+.pixel-scroll {
+  scrollbar-color: var(--color-text) transparent;
+  scrollbar-width: thin;
+}
+
+.pixel-scroll::-webkit-scrollbar {
+  width: 12px;
+}
+
+.pixel-scroll::-webkit-scrollbar-track {
+  background: linear-gradient(var(--color-text), var(--color-text)) center / 2px 100% no-repeat;
+}
+
+.pixel-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(var(--color-text), var(--color-text)) center / 12px 12px no-repeat;
+}
+
+/* Panneaux de planète ou de fusée, fixes en bas de l'écran */
+.scene-panel {
+  position: fixed;
+  bottom: var(--space-4);
+  left: 50%;
+  z-index: 5;
+  width: min(400px, calc(100vw - 32px));
+  max-height: min(60vh, 560px);
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+@media (max-width: 599px) {
+  .scene-panel {
+    bottom: var(--space-8);
+    max-height: 50vh;
+  }
+}

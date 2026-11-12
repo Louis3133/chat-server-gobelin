@@ -5,6 +5,7 @@
       <h1 class="text-h5 flex-grow-1">Bonjour {{ me?.username }}</h1>
       <v-btn variant="text" prepend-icon="mdi-logout" @click="logout">Déconnexion</v-btn>
     </div>
+    <v-btn class="mb-6" variant="outlined" prepend-icon="mdi-earth" to="/planet">Modifier ma planète</v-btn>
 
     <h2 class="text-h6 mb-2">Mes salons</h2>
     <v-list v-if="me?.channels.length" class="mb-6">

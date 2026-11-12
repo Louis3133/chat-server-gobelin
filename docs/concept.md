@@ -17,8 +17,8 @@
 
 ## Décisions (valeurs par défaut adoptées, réglables sans toucher au code)
 - [x] Modèle de positions 3D : **simple** pour la scène. **Attention** : l'API stocke une distance **par couple** (c'est elle qui décide du délai) ; un rayon d'orbite par planète ne peut pas représenter toutes les distances par couple. La scène (étape 5) devra donc calculer une disposition approximative à partir des distances renvoyées par `/channel/system` (celles de l'utilisateur qui regarde).
-- [x] Formule du délai : **linéaire**, 1 minute (distance 1) à 3 heures (distance 10).
-- [x] Formule de rapprochement : **10 % par réponse**, plancher 1, plafond 10, distance de départ 10. Seules comptent les **réponses** (le dernier message du couple venait de l'autre et est arrivé).
+- [x] Formule du délai : **1 minute pour toutes les lettres** par défaut (décision du 12/11/2026 : les planètes restent à leur place). L'interpolation linéaire selon la distance reste possible via `LETTER_MAX_DELAY`.
+- [x] Rapprochement : **désactivé par défaut** (`LETTER_APPROACH=0`), les planètes ne bougent plus. Réactivable (ex. `0.10` = 10 % par réponse, plancher 1, plafond 10, distance de départ 10 ; seules comptent les **réponses**).
 - [ ] La distance **remonte** quand on cesse de s'écrire : pas dans le MVP.
 - [x] Échelle de temps : `LETTER_TIME_SCALE` (1 = réel, 3600 = démo, une heure simulée = une seconde).
 - [x] Qui crée un channel : **seulement les admins** désignés par `ADMIN_USERNAMES`.

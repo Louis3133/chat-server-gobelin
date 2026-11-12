@@ -6,8 +6,21 @@ import (
 	"time"
 )
 
+func TestDefaultsAreOneMinuteWithoutApproach(t *testing.T) {
+	r := DefaultRules()
+	for _, d := range []float64{1, 5.5, 10} {
+		if got := r.Delay(d); got != time.Minute {
+			t.Errorf("Delay(%v) = %v, attendu 1m", d, got)
+		}
+	}
+	if got := r.Approached(10); got != 10 {
+		t.Errorf("Approached(10) = %v, attendu 10 (pas de rapprochement)", got)
+	}
+}
+
 func TestDelayIsLinearBetweenBounds(t *testing.T) {
 	r := DefaultRules()
+	r.MaxDelay = 3 * time.Hour
 	cases := []struct {
 		distance float64
 		want     time.Duration
@@ -27,6 +40,7 @@ func TestDelayIsLinearBetweenBounds(t *testing.T) {
 
 func TestDelayIsDividedByTimeScale(t *testing.T) {
 	r := DefaultRules()
+	r.MaxDelay = 3 * time.Hour
 	r.TimeScale = 3600 // démo : une heure simulée = une seconde
 	if got := r.Delay(10); got != 3*time.Second {
 		t.Errorf("Delay(10) en démo = %v, attendu 3s", got)
@@ -35,6 +49,7 @@ func TestDelayIsDividedByTimeScale(t *testing.T) {
 
 func TestApproachedRemovesTenPercentWithAFloor(t *testing.T) {
 	r := DefaultRules()
+	r.Approach = 0.10
 	if got := r.Approached(10); math.Abs(got-9) > 1e-9 {
 		t.Errorf("Approached(10) = %v, attendu 9", got)
 	}
@@ -55,7 +70,7 @@ func TestValidateRejectsNonsense(t *testing.T) {
 		func(r *Rules) { r.MinDistance = 0 },
 		func(r *Rules) { r.MaxDistance = r.MinDistance },
 		func(r *Rules) { r.MaxDelay = r.MinDelay - 1 },
-		func(r *Rules) { r.Approach = 0 },
+		func(r *Rules) { r.Approach = -0.1 },
 		func(r *Rules) { r.Approach = 1 },
 		func(r *Rules) { r.TimeScale = 0 },
 	}

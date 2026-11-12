@@ -1,0 +1,55 @@
+/* UI kit : typographie */
+:root {
+  --font-family: 'Pixelify Sans', sans-serif;
+
+  --heading-size: 24px;
+  --heading-weight: 700;
+
+  --subtitle-size: 20px;
+  --subtitle-weight: 400;
+
+  --subtitle-medium-size: 18px;
+  --subtitle-medium-weight: 500;
+
+  --body-size: 16px;
+  --body-weight: 400;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--body-size);
+  font-weight: var(--body-weight);
+  line-height: normal;
+}
+
+body [class*='text-'],
+button,
+input,
+textarea,
+select {
+  font-family: var(--font-family) !important;
+}
+
+.text-heading {
+  font-size: var(--heading-size) !important;
+  font-weight: var(--heading-weight) !important;
+  line-height: normal !important;
+}
+
+.text-subtitle {
+  font-size: var(--subtitle-size) !important;
+  font-weight: var(--subtitle-weight) !important;
+  line-height: normal !important;
+}
+
+.text-subtitle-medium {
+  font-size: var(--subtitle-medium-size) !important;
+  font-weight: var(--subtitle-medium-weight) !important;
+  line-height: normal !important;
+}
+
+.text-body {
+  font-size: var(--body-size) !important;
+  font-weight: var(--body-weight) !important;
+  line-height: normal !important;
+}

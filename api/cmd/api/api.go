@@ -36,6 +36,7 @@ var publicRoutes = map[string]bool{
 	http.MethodGet + " /users":     true,
 	http.MethodGet + " /channel":   true,
 	http.MethodGet + " /channels":  true,
+	http.MethodGet + " /user/texture": true, // textures importées des planètes, affichées dans ce même décor
 }
 
 func main() {
@@ -91,7 +92,7 @@ func main() {
 
 	internalUser, err := userRepo.GetByUserName(ctx, "internal-clock")
 	if err != nil {
-		internalUser, err = userRepo.Create(ctx, "internal-clock", []byte("111111111"), users.Planet{Color: "#8d9db6", Size: 0.55})
+		internalUser, err = userRepo.Create(ctx, "internal-clock", []byte("111111111"), users.DefaultPlanet())
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -156,6 +157,11 @@ func main() {
 	router.HandleFunc("/user", userHandler.Create).Methods(http.MethodPost)
 	router.HandleFunc("/user", userHandler.Delete).Methods(http.MethodDelete)
 	router.HandleFunc("/me", userHandler.Me).Methods(http.MethodGet)
+	router.HandleFunc("/me/planet", userHandler.UpdatePlanet).Methods(http.MethodPut)
+	router.HandleFunc("/me/profile", userHandler.UpdateProfile).Methods(http.MethodPut)
+	router.HandleFunc("/me/planet/texture", userHandler.UploadTexture).Methods(http.MethodPut)
+	router.HandleFunc("/me/planet/texture", userHandler.DeleteTexture).Methods(http.MethodDelete)
+	router.HandleFunc("/user/texture", userHandler.Texture).Methods(http.MethodGet)
 	router.HandleFunc("/channel", channelHandler.GetAll).Methods(http.MethodGet)
   router.HandleFunc("/channels", channelHandler.GetAll).Methods(http.MethodGet)
 	router.HandleFunc("/channel", channelHandler.Create).Methods(http.MethodPost)
@@ -164,6 +170,8 @@ func main() {
 	router.HandleFunc("/channel/system", messageHandler.System).Methods(http.MethodGet)
 	router.HandleFunc("/channel/message", messageHandler.GetMessages).Methods(http.MethodGet)
 	router.HandleFunc("/channel/message", messageHandler.CreateMessage).Methods(http.MethodPost)
+	router.HandleFunc("/channel/message", messageHandler.CancelLetter).Methods(http.MethodDelete)
+	router.HandleFunc("/channel/message/rocket", messageHandler.RemoveRocket).Methods(http.MethodDelete)
 	router.Methods(http.MethodOptions).HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusOK)
 	}).Methods(http.MethodOptions)

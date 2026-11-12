@@ -1,5 +1,5 @@
 <template>
-  <InfoMenu :title="selected?.username ?? system?.channel.name" :back-label="selected ? 'Retour au salon' : 'Mes salons'" @back="back">
+  <InfoMenu :title="selected?.username ?? system?.channel.name" :back-label="composerOpen ? undefined : selected ? 'Retour au salon' : 'Mes salons'" :back-only="!!selected" @back="back">
   <template #actions>
     <v-btn icon="mdi-email-edit-outline" color="white" variant="outlined" title="Écrire à…" aria-label="Écrire à…" @click="searchOpen = !searchOpen" />
     <v-autocomplete
@@ -19,15 +19,17 @@
       @keydown.esc="searchOpen = false"
     />
   </template>
-  <v-card class="infos-panel px-4 py-8 bg-white">
+  <v-card class="infos-panel px-4 py-8">
     <h1 v-if="!selected" class="text-h5 mb-4">{{ system?.channel.name ?? 'Salon' }}</h1>
     <h1 v-if="selected" class="text-h5 mb-4">{{ selected.username }}</h1>
 
     <p v-if="!selected" class="text-caption mb-6">Clique sur une planète pour lui écrire et voir votre conversation. Les points jaunes sont des lettres en route.</p>
 
     <h2 class="text-h6 mb-2">Écrire</h2>
+    <RocketPanel v-if="rocketLetter" :letter="rocketLetter" :recipient="rocketLetter.recipient ?? ''" :cancelling="cancelling" @cancel="cancelLetter" @arrived="onArrived" />
+    <PlanetProfile v-if="selected" v-model="profileOpen" :planet="selected" :letters="messages" @write="writeSelected" @read="read" />
     <LetterComposer v-if="selected" v-model="composerOpen" :recipient="selected" :channel-id="channelId" @sent="onSent" @failed="notify" />
-    <LetterViewer v-if="reading" v-model="readerOpen" :blocks="reading.blocks" :from="reading.from" />
+    <LetterViewer v-if="reading" v-model="readerOpen" :blocks="reading.blocks" :strokes="reading.strokes" :from="reading.from" :removable="canRemove" @remove="removeRocket" />
 
     <div class="d-flex align-center mb-2">
       <h2 class="text-h6 flex-grow-1">Boîte de lettres</h2>
@@ -36,7 +38,7 @@
 
     <v-btn @click="composerOpen = true" v-if="selected">Ecrire</v-btn>
     <p v-if="!loading && !shown.length">Aucun message pour l'instant.</p>
-    <v-card v-for="(m, i) in shown" :key="i" class="mb-3 pa-3" :variant="m.in_transit ? 'tonal' : 'elevated'">
+    <v-card v-for="(m, i) in shown" :key="i" class="mb-2 pa-2" :variant="m.in_transit ? 'tonal' : 'elevated'">
       <div class="text-caption">
         <strong>{{ m.user }}</strong>
         <template v-if="m.recipient_id"> → {{ m.recipient ?? 'moi' }}</template>
@@ -76,14 +78,6 @@
     right: 8px;
     width: auto;
   }
-
-  .infos-panel {
-    border-radius: 16px;
-  }
-}
-
-.infos-panel {
-  border-radius: 24px;
 }
 
 </style>
@@ -95,7 +89,7 @@ const api = useChatApi()
 const channelId = Number(useRoute().params.id)
 
 // La scène plein écran (app.vue) lit cet état partagé
-const { system, messages, selectedId: recipientId } = useScene()
+const { system, messages, selectedId: recipientId, profileOpen, clickedRocket, followedLetter, openedLetter } = useScene()
 const me = ref<UserMe | null>(null)
 const loading = ref(true)
 const snackbar = ref(false)
@@ -104,7 +98,7 @@ const snackbarColor = ref('red')
 const composerOpen = ref(false)
 const searchOpen = ref(false)
 const readerOpen = ref(false)
-const reading = ref<{ blocks: LetterBlock[], from: string } | null>(null)
+const reading = ref<{ blocks: LetterBlock[], strokes: Stroke[], from: string, letter: Message } | null>(null)
 
 const selected = computed(() => system.value?.planets.find((p) => p.id === recipientId.value) ?? null)
 
@@ -147,6 +141,7 @@ const load = async () => {
 const onSent = async (sent: Message) => {
   notify(sent.in_transit ? `Lettre partie, arrivée ${formatDate(sent.deliver_at)}` : 'Lettre envoyée', 'success')
   await load()
+  followedLetter.value = letterKey(sent)
 }
 
 // Écrire à quelqu'un du salon en cherchant son nom
@@ -159,6 +154,12 @@ const writeTo = (id: number | null) => {
   searchOpen.value = false
 }
 
+// Depuis la modale de la planète : on la ferme et on ouvre l'éditeur
+const writeSelected = () => {
+  profileOpen.value = false
+  composerOpen.value = true
+}
+
 // Retour à l'étape précédente : de la planète au salon, du salon à la liste
 const back = () => {
   if (!selected.value) return navigateTo('/channels')
@@ -166,11 +167,85 @@ const back = () => {
 }
 
 // Sans planète sélectionnée (retour ou clic sur le soleil), l'éditeur se referme
-watch(recipientId, (id) => { if (id == null) composerOpen.value = false })
+watch(recipientId, (id) => {
+  if (id != null) return
+  composerOpen.value = false
+  profileOpen.value = false
+})
 
 const read = (m: Message) => {
-  reading.value = { blocks: parseLetter(m.content) ?? [], from: m.user }
+  const letter = parseLetter(m.content)
+  reading.value = { blocks: letter?.blocks ?? [], strokes: letter?.strokes ?? [], from: m.user, letter: m }
   readerOpen.value = true
+}
+
+// Fusée posée ouverte dans la scène : le nez s'ouvre, puis la lettre s'affiche ; la refermer referme le nez
+const NOSE_OPEN_MS = 700
+const letterFor = (key: string) => messages.value.find((m) => letterKey(m) === key)
+
+watch(openedLetter, async (key) => {
+  if (!key) return
+  const wait = new Promise((resolve) => setTimeout(resolve, NOSE_OPEN_MS))
+  if (!letterFor(key)?.content) {
+    try {
+      messages.value = await api.getMessages(channelId)
+    } catch (error) {
+      notify(apiErrorMessage(error))
+    }
+  }
+  await wait
+  const m = letterFor(key)
+  if (m?.content && openedLetter.value === key) read(m)
+  else openedLetter.value = null
+})
+
+watch(readerOpen, (open) => { if (!open) openedLetter.value = null })
+
+// Fusée cliquée : son panneau seulement pour sa propre lettre encore en route
+const cancelling = ref(false)
+const rocketLetter = computed(() =>
+  messages.value.find((m) => letterKey(m) === clickedRocket.value && m.user_id === me.value?.id && m.in_transit && !m.rocket_removed),
+)
+
+// Annuler : la fusée explose comme une fusée retirée, puis le salon est rechargé (distance éventuellement rendue)
+const cancelLetter = async () => {
+  const m = rocketLetter.value
+  if (!m) return
+  cancelling.value = true
+  try {
+    await api.cancelLetter(m.id)
+    clickedRocket.value = null
+    messages.value = messages.value.map((x) => (x.id === m.id ? { ...x, rocket_removed: true } : x))
+    notify('Lettre annulée', 'success')
+    await load()
+  } catch (error) {
+    notify(apiErrorMessage(error))
+  } finally {
+    cancelling.value = false
+  }
+}
+
+const onArrived = () => {
+  clickedRocket.value = null
+  load()
+}
+
+// Retirer la fusée d'une lettre reçue : la lettre reste dans la liste, la fusée disparaît de la planète (pouf)
+const canRemove = computed(() => {
+  const m = reading.value?.letter
+  return !!m && m.recipient_id === me.value?.id && !m.in_transit && !m.rocket_removed
+})
+
+const removeRocket = async () => {
+  const m = reading.value?.letter
+  if (!m) return
+  try {
+    await api.removeRocket(m.id)
+    readerOpen.value = false
+    messages.value = messages.value.map((x) => (x.id === m.id ? { ...x, rocket_removed: true } : x))
+  } catch (error) {
+    notify(apiErrorMessage(error))
+  }
 }
 
 onMounted(load)
@@ -180,5 +255,9 @@ onBeforeUnmount(() => {
   system.value = null
   messages.value = []
   recipientId.value = null
+  profileOpen.value = false
+  clickedRocket.value = null
+  followedLetter.value = null
+  openedLetter.value = null
 })
 </script>

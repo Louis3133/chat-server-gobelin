@@ -31,7 +31,7 @@ Réponse (200) :
 }
 ```
 
-Erreurs : 400 (corps invalide, contenu vide ou de plus de 5000 caractères, lettre à soi-même, destinataire hors du salon),
+Erreurs : 400 (corps invalide, contenu vide ou de plus de 100 000 caractères, lettre à soi-même, destinataire hors du salon),
 403 (pas membre du salon), 404 (salon inconnu).
 
 ## Get messages
@@ -70,7 +70,8 @@ chacune et le temps qu'une lettre mettrait maintenant. Les distances des autres 
 {
   "channel": { "name": "ecni", "id": 4, "owner_id": 1, "creation_date": "..." },
   "planets": [
-    { "id": 1, "username": "isabelle", "me": true, "distance": null, "delay_seconds": null, "exchanges": 0 },
+    { "id": 1, "username": "isabelle", "me": true, "distance": null, "delay_seconds": null, "exchanges": 0,
+      "planet_name": "Kepler-22b", "pronouns": "elle", "bio": "..." },
     { "id": 2, "username": "sanae", "me": false, "distance": 9, "delay_seconds": 9600, "exchanges": 1 }
   ],
   "min_distance": 1,
@@ -79,8 +80,23 @@ chacune et le temps qu'une lettre mettrait maintenant. Les distances des autres 
 }
 ```
 
-`delay_seconds` est un temps réel (déjà divisé par `time_scale`). `exchanges` compte les réponses échangées avec cette personne.
+`delay_seconds` est un temps réel (déjà divisé par `time_scale`). `exchanges` compte les réponses échangées avec cette personne. Chaque planète porte aussi son apparence et le profil de la personne (`planet_name`, `pronouns`, `bio`, cf. `PUT /me/profile`).
 
 ## Websocket
 
 To be implemented
+
+## Annuler une lettre en route
+DELETE **/channel/message?message=ID** (authentification requise)
+
+L'expéditeur annule sa lettre tant qu'elle n'est pas arrivée : elle est supprimée (le destinataire ne la voit plus), et
+si c'était une réponse, le couple retrouve la distance d'avant ce rapprochement (`approached_from`, migration 00010).
+Réponse 204. 404 si la lettre n'existe pas, n'est pas la sienne ou est déjà arrivée.
+
+## Retirer la fusée d'une lettre reçue
+DELETE **/channel/message/rocket?message=ID** (authentification requise)
+
+Le destinataire retire la fusée posée sur sa planète, pour faire de la place : la lettre reste lisible dans
+`GET /channel/message`, avec `"rocket_removed": true`, et la scène ne l'affiche plus (ni chez lui ni chez l'expéditeur).
+Réponse 204. 404 si la lettre n'existe pas, ne lui est pas adressée ou est encore en route. Les messages renvoient
+aussi leur `id`, qui sert à désigner la lettre ici.

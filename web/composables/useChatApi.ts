@@ -6,22 +6,41 @@ export interface Channel {
   member_ids?: number[]
 }
 
-export interface UserMe {
+// Apparence d'une planète, telle que l'API la stocke (PUT /me/planet)
+export interface PlanetLook {
+  planet_color: string
+  planet_size: number
+  planet_rings: boolean
+  planet_tilt: number
+  planet_ring_color: string
+  planet_ring_size: number
+  planet_spin: number
+  planet_moon: boolean
+}
+
+// Profil affiché au clic sur une planète (PUT /me/profile)
+export interface Profile {
+  planet_name: string
+  pronouns: string
+  bio: string
+}
+
+export interface UserMe extends Partial<PlanetLook>, Partial<Profile> {
+  planet_texture_version?: number
   id: number
   username: string
   channels: Channel[]
   is_admin?: boolean
 }
 
-export interface PublicUser {
+export interface PublicUser extends Partial<PlanetLook>, Partial<Profile> {
+  planet_texture_version?: number
   id: number
   username: string
-  planet_color?: string
-  planet_size?: number
-  planet_rings?: boolean
 }
 
 export interface Message {
+  id: number
   content: string
   user_id: number
   user: string
@@ -30,9 +49,10 @@ export interface Message {
   creation_date: string
   deliver_at: string
   in_transit: boolean
+  rocket_removed?: boolean
 }
 
-export interface Planet {
+export interface Planet extends Partial<Profile> {
   id: number
   username: string
   me: boolean
@@ -42,6 +62,12 @@ export interface Planet {
   color?: string
   size?: number
   rings?: boolean
+  tilt?: number
+  ring_color?: string
+  ring_size?: number
+  spin?: number
+  moon?: boolean
+  texture_version?: number
 }
 
 export interface SolarSystem {
@@ -123,6 +149,19 @@ export const useChatApi = () => {
   // GET /me -> profil et liste des salons de l'utilisateur
   const getMe = () => request<UserMe>('/me')
 
+  // PUT /me/planet -> enregistrer l'apparence complète de sa planète
+  const updatePlanet = (look: PlanetLook) => request<PublicUser>('/me/planet', { method: 'PUT', body: look })
+
+  // PUT /me/planet/texture -> importer une texture (image déjà réduite), DELETE -> revenir à la roche
+  const uploadTexture = (image: Blob) => request<PublicUser>('/me/planet/texture', { method: 'PUT', body: image })
+  const deleteTexture = () => request<PublicUser>('/me/planet/texture', { method: 'DELETE' })
+
+  // PUT /me/profile -> nom de sa planète, pronoms et bio
+  const updateProfile = (profile: Profile) => request<PublicUser>('/me/profile', { method: 'PUT', body: profile })
+
+  // GET /user/texture est public : une simple URL, versionnée pour le cache du navigateur
+  const textureUrl = (userId: number, version: number) => `${baseURL}/user/texture?user=${userId}&v=${version}`
+
   // POST /channel -> créer un salon (réservé aux admins : 403 sinon)
   const createChannel = (name: string) =>
     request<Channel>('/channel', { method: 'POST', body: { name } })
@@ -130,6 +169,16 @@ export const useChatApi = () => {
   // POST /channel/enter -> rejoindre un salon existant par son nom
   const enterChannel = async (channelName: string): Promise<void> => {
     await request<void>('/channel/enter', { method: 'POST', body: { channel: channelName } })
+  }
+
+  // DELETE /channel/message/rocket?message=ID -> retirer la fusée d'une lettre reçue (la lettre reste)
+  // DELETE /channel/message -> annuler sa lettre encore en route
+  const cancelLetter = async (messageId: number): Promise<void> => {
+    await request<void>('/channel/message', { method: 'DELETE', params: { message: messageId }, responseType: 'text' })
+  }
+
+  const removeRocket = async (messageId: number): Promise<void> => {
+    await request<void>('/channel/message/rocket', { method: 'DELETE', params: { message: messageId }, responseType: 'text' })
   }
 
   // DELETE /channel?channel=ID -> supprimer un salon et ses lettres (admins ; "general" est protégé)
@@ -165,6 +214,12 @@ export const useChatApi = () => {
     getUsers,
     getChannels,
     getMe,
+    updatePlanet,
+    updateProfile,
+    cancelLetter,
+    uploadTexture,
+    deleteTexture,
+    textureUrl,
     createChannel,
     enterChannel,
     deleteChannel,
@@ -172,6 +227,7 @@ export const useChatApi = () => {
     getSystem,
     getMessages,
     sendMessage,
+    removeRocket,
   }
 }
 
@@ -183,6 +239,7 @@ export const apiErrorMessage = (error: any): string => {
   if (status === 403) return detail || 'Accès refusé'
   if (status === 404) return detail || 'Introuvable'
   if (status === 400) return detail || 'Requête invalide'
+  if (status === 413) return detail || 'Fichier trop lourd'
   if (status) return 'Erreur du serveur'
   return 'Impossible de joindre le serveur'
 }

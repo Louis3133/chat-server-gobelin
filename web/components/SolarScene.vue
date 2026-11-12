@@ -28,15 +28,27 @@ const normalTexture = loadPixelTexture('/textures/planets/rock_boulder_dry_nor_g
 const armTexture = loadPixelTexture('/textures/planets/rock_boulder_dry_arm_1k.jpg')
 const sunTexture = loadPixelTexture('/textures/planets/2k_venus_surface.jpg', true)
 
+// Textures importées par les utilisateurs, chargées une fois par URL
+const importedTextures = new Map<string, THREE.Texture>()
+const textureAt = (url: string | null | undefined) => {
+  if (!url) return texture
+  if (!importedTextures.has(url)) importedTextures.set(url, loadPixelTexture(url, true))
+  return importedTextures.get(url)!
+}
+
 const props = defineProps<{
   system: SolarSystem | null
   decor: SolarSystem | null
   channels: Channel[]
   messages: Message[]
   selectedId: number | null
+  followedLetter: string | null
+  openedLetter: string | null
+  customizing: { id: number; look: PlanetLook; texture: string | null } | null
   overview: boolean
 }>()
-const emit = defineEmits<{ select: [id: number]; open: [channel: Channel]; center: [] }>()
+const emit = defineEmits<{ select: [id: number]; open: [channel: Channel]; center: []; read: [key: string]; rocket: [key: string | null] }>()
+const api = useChatApi()
 
 const container = ref<HTMLDivElement>()
 const tweaksEl = ref<HTMLDivElement>()
@@ -54,7 +66,7 @@ const tweaks = {
   haloOpacity: 0.35,
   background: '#05060f',
   orbitColor: '#445566',
-  orbitWidth: 1,
+  orbitWidth: 1.5,
   orbitOpacity: 0.5,
   starCount: 1500,
   starSize: 2,
@@ -80,6 +92,7 @@ interface Look {
   ringColor: string
   ringSize: number
   spin: number
+  moon: boolean
 }
 const looks = new Map<string, Look>()
 const savedLooks = (): Record<string, Partial<Look>> => {
@@ -100,11 +113,12 @@ interface CameraView {
   elevation: number
   azimuth: number
 }
-const cameraViews: Record<'overview' | 'channel' | 'planet' | 'rocket', CameraView> = {
+const cameraViews: Record<'overview' | 'channel' | 'planet' | 'rocket' | 'customize', CameraView> = {
   overview: { distance: 24, fixedAngle: true, elevation: 66, azimuth: 0 },
   channel: { distance: 24, fixedAngle: false, elevation: 66, azimuth: 0 },
   planet: { distance: 5, fixedAngle: false, elevation: 30, azimuth: 0 },
   rocket: { distance: 2.6, fixedAngle: false, elevation: 30, azimuth: 0 },
+  customize: { distance: 7, fixedAngle: true, elevation: 20, azimuth: 0 },
 }
 if (debug) {
   try {
@@ -112,7 +126,7 @@ if (debug) {
     for (const [name, view] of Object.entries(cameraViews)) Object.assign(view, saved[name])
   } catch {}
 }
-const CAMERA_LABELS = { overview: "Vue d'ensemble", channel: 'Salon', planet: 'Planète sélectionnée', rocket: 'Suivi de fusée' }
+const CAMERA_LABELS = { overview: "Vue d'ensemble", channel: 'Salon', planet: 'Planète sélectionnée', rocket: 'Suivi de fusée', customize: 'Personnalisation' }
 const viewDirection = (view: CameraView) =>
   new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - view.elevation), THREE.MathUtils.degToRad(view.azimuth))
 
@@ -163,12 +177,19 @@ const ROCKET_LENGTH = 0.7
 let rocketModel: THREE.Object3D | null = null
 let followedKey: string | null = null
 
-const followedRocket = () => (followedKey ? letters.children.find((d) => d.userData.key === followedKey) : undefined)
+// Fusée suivie qui explose : la caméra reste un instant sur l'explosion
+const POOF_LINGER = 1500
+const poofSpot = new THREE.Object3D()
+let poofUntil = 0
+
+const followedRocket = () =>
+  (followedKey ? letters.children.find((d) => d.userData.key === followedKey) : undefined) ?? (Date.now() < poofUntil ? poofSpot : undefined)
 
 const stopFollowing = () => {
   if (!followedKey) return
   followedKey = null
   adjustingZoom = true
+  emit('rocket', null)
 }
 
 const rocketAt = (event: MouseEvent) => {
@@ -177,6 +198,30 @@ const rocketAt = (event: MouseEvent) => {
     .filter((d) => ray.distanceToPoint(d.position) < ROCKET_HIT_RADIUS * tweaks.rocketSize)
     .sort((a, b) => a.position.distanceTo(camera.position) - b.position.distanceTo(camera.position))[0]
 }
+
+// Nez : le cône rouge (Tip) pivote sur son bord, comme un clapet, pour révéler la lettre
+const NOSE_HINGE = new THREE.Vector3(0.42, 0, 0.266)
+const NOSE_OPEN = 1.9
+const addNoseHinge = (model: THREE.Object3D) => {
+  const tip = model.getObjectByName('Tip')
+  if (!tip?.parent) return
+  const hinge = new THREE.Group()
+  hinge.name = 'NoseHinge'
+  hinge.position.copy(NOSE_HINGE)
+  tip.parent.add(hinge)
+  hinge.add(tip)
+  tip.position.sub(NOSE_HINGE)
+}
+
+const animateNose = (dot: THREE.Object3D) => {
+  const hinge = dot.userData.hinge as THREE.Object3D | undefined
+  if (!hinge) return
+  const goal = dot.userData.key === props.openedLetter ? NOSE_OPEN : 0
+  hinge.rotation.y = THREE.MathUtils.lerp(hinge.rotation.y, goal, 0.12)
+}
+
+// Seul le destinataire ouvre une fusée, et seulement une fois posée
+const readable = (dot?: THREE.Object3D) => !!dot?.userData.toMe && Date.now() >= dot.userData.end
 
 const loadRocket = () => {
   new GLTFLoader().load('/models/rocket/scene.gltf', (gltf) => {
@@ -191,6 +236,7 @@ const loadRocket = () => {
         map.needsUpdate = true
       }
     })
+    addNoseHinge(model)
     const box = new THREE.Box3().setFromObject(model)
     model.position.sub(box.getCenter(new THREE.Vector3()))
     const pivot = new THREE.Group()
@@ -228,7 +274,7 @@ const ROCKET_ARC = 0.35
 const ROCKET_LIFT = 0.8
 const HOVER_AT = 0.85
 const NOSE = new THREE.Vector3(0, 0, 1)
-const landSpots = new Map<string, THREE.Vector3>()
+const landSpots = new Map<string, THREE.Quaternion>()
 
 // Décalage propre à chaque lettre : deux fusées vers la même planète ne se posent pas au même endroit
 const LAND_SPREAD = 0.9
@@ -248,15 +294,14 @@ const fly = (rocket: THREE.Object3D, from: THREE.Mesh, to: THREE.Mesh, progress:
   const dir = to.position.clone().sub(from.position).normalize()
   const launch = dir.clone().addScaledVector(UP, ROCKET_LIFT).normalize()
 
-  // Point d'atterrissage accroché à la planète dès la phase d'atterrissage : il tourne avec elle
+  // Point d'atterrissage fixe pendant la descente, accroché à la planète une fois posée : il tourne alors avec elle
   let land = dir.clone().negate().addScaledVector(UP, ROCKET_LIFT).add(spreadOf(rocket.userData.key)).normalize()
   let landed = new THREE.Quaternion().setFromUnitVectors(NOSE, land)
-  if (progress >= cruiseEnd) {
+  if (progress >= 1) {
     const key = rocket.userData.key
-    if (!landSpots.has(key)) landSpots.set(key, land.clone().applyQuaternion(to.quaternion.clone().invert()))
-    const spot = landSpots.get(key)!
-    land = spot.clone().applyQuaternion(to.quaternion)
-    landed = to.quaternion.clone().multiply(new THREE.Quaternion().setFromUnitVectors(NOSE, spot))
+    if (!landSpots.has(key)) landSpots.set(key, to.quaternion.clone().invert().multiply(landed))
+    landed = to.quaternion.clone().multiply(landSpots.get(key)!)
+    land = NOSE.clone().applyQuaternion(landed)
   }
 
   const start = from.position.clone().addScaledVector(launch, surfaceOf(from) + half)
@@ -288,6 +333,20 @@ const puff = (rocket: THREE.Object3D, now: number) => {
   smokeDrift.set([drift.x, drift.y, drift.z], i * 3)
   smokeBorn[i] = now
   smokeShade[i] = 0.55 + Math.random() * 0.35
+}
+
+// Pouf : une bouffée de fumée qui part dans tous les sens, quand une fusée est retirée
+const POOF_COUNT = 40
+const poof = (at: THREE.Vector3, now: number) => {
+  for (let n = 0; n < POOF_COUNT; n++) {
+    const i = smokeNext
+    smokeNext = (smokeNext + 1) % SMOKE_MAX
+    smokeOrigins.set([at.x, at.y, at.z], i * 3)
+    const drift = new THREE.Vector3().randomDirection().multiplyScalar((0.0004 + Math.random() * 0.0006) * tweaks.rocketSize)
+    smokeDrift.set([drift.x, drift.y, drift.z], i * 3)
+    smokeBorn[i] = now
+    smokeShade[i] = 0.75 + Math.random() * 0.25
+  }
 }
 
 const animateSmoke = (now: number) => {
@@ -386,18 +445,45 @@ const lookFor = (p: Planet) => {
     look = {
       size: p.size ?? BASE_SIZE,
       color: p.color ?? `#${colorFor(name).getHexString()}`,
-      texture,
-      tilt: 0,
+      texture: p.texture_version ? textureAt(api.textureUrl(p.id, p.texture_version)) : texture,
+      tilt: p.tilt ?? 0,
       rings: p.rings ?? false,
-      ringColor: '#d9c9a3',
-      ringSize: 2,
-      spin: 0.01,
+      ringColor: p.ring_color ?? '#d9c9a3',
+      ringSize: p.ring_size ?? 2,
+      spin: p.spin ?? 0.01,
+      moon: p.moon ?? false,
       ...(debug ? savedLooks()[name] : {}),
     }
     looks.set(name, look)
     addLookFolder(name, look)
   }
   return look
+}
+
+// Lune : enfant de la planète, donc proportionnelle à sa taille et dans son plan incliné
+const MOON_SIZE = 0.27
+const MOON_DISTANCE = 2.2
+const MOON_SPEED = 0.0008
+const applyMoon = (mesh: THREE.Mesh, look: Look) => {
+  let moon = mesh.userData.moon as THREE.Group | undefined
+  if (look.moon && !moon) {
+    const r = (mesh.geometry as THREE.SphereGeometry).parameters.radius
+    const body = new THREE.Mesh(
+      new THREE.SphereGeometry(r * MOON_SIZE, 8, 6),
+      new THREE.MeshStandardMaterial({ flatShading: true, map: texture, color: '#b8b8c0' }),
+    )
+    body.position.x = r * MOON_DISTANCE
+    moon = new THREE.Group().add(body)
+    mesh.userData.moon = moon
+    mesh.add(moon)
+  }
+  if (moon) moon.visible = look.moon
+}
+
+// Orbite de la lune : on retire la rotation propre de la planète, la lune garde sa vitesse
+const orbitMoon = (mesh: THREE.Mesh, now: number) => {
+  const moon = mesh.userData.moon as THREE.Group | undefined
+  if (moon?.visible) moon.rotation.y = now * MOON_SPEED - mesh.rotation.y
 }
 
 const applyLook = (mesh: THREE.Mesh, look: Look) => {
@@ -411,6 +497,7 @@ const applyLook = (mesh: THREE.Mesh, look: Look) => {
   }
   mesh.scale.setScalar(look.size / BASE_SIZE)
   mesh.rotation.z = look.tilt
+  applyMoon(mesh, look)
   let ring = mesh.userData.ring as THREE.Mesh | undefined
   if (look.rings && !ring) {
     ring = new THREE.Mesh(
@@ -432,6 +519,27 @@ const applyLook = (mesh: THREE.Mesh, look: Look) => {
   }
 }
 
+// Personnalisation de sa planète : aperçu en direct, sur sa planète de general
+const customizedNode = () => (props.customizing ? planets.get(`general:${props.customizing.id}`) : undefined)
+const previewLook = () => {
+  const node = customizedNode()
+  if (!node) return
+  const { look: l, texture: url } = props.customizing!
+  const name = node.mesh.userData.username
+  Object.assign(looks.get(name)!, {
+    texture: textureAt(url),
+    size: l.planet_size,
+    color: l.planet_color,
+    tilt: l.planet_tilt,
+    rings: l.planet_rings,
+    ringColor: l.planet_ring_color,
+    ringSize: l.planet_ring_size,
+    spin: l.planet_spin,
+    moon: l.planet_moon,
+  })
+  refreshLook(name)
+}
+
 const refreshLook = (name: string) => {
   const look = looks.get(name)!
   for (const node of planets.values()) if (node.mesh.userData.username === name) applyLook(node.mesh, look)
@@ -447,6 +555,7 @@ const addLookFolder = (name: string, look: Look) => {
   folder.addBinding(look, 'rings', { label: 'Anneaux' })
   folder.addBinding(look, 'ringColor', { label: 'Couleur anneaux' })
   folder.addBinding(look, 'ringSize', { label: 'Taille anneaux', min: 1.5, max: 4, step: 0.05 })
+  folder.addBinding(look, 'moon', { label: 'Lune' })
   folder.addBinding(look, 'spin', { label: 'Rotation', min: -0.1, max: 0.1, step: 0.001 })
   folder.on('change', () => {
     refreshLook(name)
@@ -699,8 +808,18 @@ const LANDED_MAX = 30
 
 const syncLetters = () => {
   if (!ready) return
+  const removed = new Set(props.messages.filter((m) => m.rocket_removed).map(letterKey))
+  for (const dot of letters.children) {
+    if (!removed.has(dot.userData.key)) continue
+    poof(dot.position, Date.now())
+    if (dot.userData.key === followedKey) {
+      poofSpot.position.copy(dot.position)
+      poofUntil = Date.now() + POOF_LINGER
+    }
+  }
   letters.clear()
-  const sent = props.messages.filter((m) => m.recipient_id)
+  const meId = props.system?.planets.find((p) => p.me)?.id
+  const sent = props.messages.filter((m) => m.recipient_id && !m.rocket_removed)
   const landed = sent
     .filter((m) => !m.in_transit)
     .sort((a, b) => new Date(b.deliver_at).getTime() - new Date(a.deliver_at).getTime())
@@ -711,13 +830,16 @@ const syncLetters = () => {
     if (!from || !to) continue
     const dot = rocketModel?.clone() ?? new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffd54f }))
     dot.userData = {
-      key: `${m.user_id}:${m.recipient_id}:${m.creation_date}`,
+      key: letterKey(m),
       lastPuff: 0,
       from: from.mesh,
       to: to.mesh,
       start: new Date(m.creation_date).getTime(),
       end: new Date(m.deliver_at).getTime(),
+      toMe: m.recipient_id === meId,
+      hinge: dot.getObjectByName('NoseHinge'),
     }
+    if (dot.userData.hinge && dot.userData.key === props.openedLetter) dot.userData.hinge.rotation.y = NOSE_OPEN
     letters.add(dot)
   }
 }
@@ -736,16 +858,16 @@ const channelDistance = () => cameraViews.channel.distance / Math.min(1, camera.
 const overviewDistance = () => Math.max(cameraViews.overview.distance, overviewFit)
 
 // Caméra : suit la sélection, le soleil du salon ouvert ou l'ensemble des salons
-const followSelection = (selected?: PlanetNode, rocket?: THREE.Object3D) => {
-  const wanted = rocket ? rocket.position : selected ? selected.mesh.position : props.overview ? overviewCenter : activeCenter
+const followSelection = (selected?: PlanetNode, rocket?: THREE.Object3D, customized?: PlanetNode) => {
+  const wanted = customized ? customized.mesh.position : rocket ? rocket.position : selected ? selected.mesh.position : props.overview ? overviewCenter : activeCenter
   const before = controls.target.clone()
   controls.target.lerp(wanted, 0.04)
   camera.position.add(controls.target.clone().sub(before))
 
   if (adjustingZoom) {
     const offset = camera.position.clone().sub(controls.target)
-    const view = rocket ? cameraViews.rocket : selected ? cameraViews.planet : props.overview ? cameraViews.overview : cameraViews.channel
-    const goal = rocket || selected ? view.distance : props.overview ? overviewDistance() : channelDistance()
+    const view = customized ? cameraViews.customize : rocket ? cameraViews.rocket : selected ? cameraViews.planet : props.overview ? cameraViews.overview : cameraViews.channel
+    const goal = customized || rocket || selected ? view.distance : props.overview ? overviewDistance() : channelDistance()
     const wantedDir = view.fixedAngle ? viewDirection(view) : null
     const next = THREE.MathUtils.lerp(offset.length(), goal, 0.05)
     const dir = offset.normalize()
@@ -757,6 +879,21 @@ const followSelection = (selected?: PlanetNode, rocket?: THREE.Object3D) => {
   controls.maxDistance = props.overview || adjustingZoom ? Math.max(farthest, overviewDistance() * 1.2) : farthest
 }
 
+// Mobile : la planète ou la fusée suivie remonte dans l'écran pour laisser la place au panneau du bas
+const MOBILE_WIDTH = 600
+const MOBILE_LIFT = 0.22
+let viewLift = 0
+
+const liftView = (focused: boolean) => {
+  const el = container.value
+  if (!el) return
+  const goal = focused && el.clientWidth < MOBILE_WIDTH ? MOBILE_LIFT : 0
+  viewLift = Math.abs(goal - viewLift) < 0.001 ? goal : THREE.MathUtils.lerp(viewLift, goal, 0.06)
+  const { clientWidth: w, clientHeight: h } = el
+  if (viewLift) camera.setViewOffset(w, h, 0, viewLift * h, w, h)
+  else camera.clearViewOffset()
+}
+
 // Boucle d'animation
 const animate = () => {
   frame = requestAnimationFrame(animate)
@@ -766,6 +903,7 @@ const animate = () => {
   for (const node of planets.values()) {
     node.mesh.position.lerp(node.target.clone().applyAxisAngle(UP, spin).add(node.center), 0.05)
     node.mesh.rotation.y += looks.get(node.mesh.userData.username)?.spin ?? 0.01
+    orbitMoon(node.mesh, now)
     node.label.visible = !props.overview && node.key === activeKey
   }
   for (const dot of letters.children) {
@@ -773,6 +911,7 @@ const animate = () => {
     const progress = progressOf(start, end, now)
     dot.scale.setScalar(tweaks.rocketSize)
     fly(dot, from, to, progress)
+    animateNose(dot)
     if (rocketModel && progress < 1 && now - dot.userData.lastPuff >= SMOKE_EVERY) {
       dot.userData.lastPuff = now
       puff(dot, now)
@@ -799,7 +938,8 @@ const animate = () => {
   }
   const rocket = followedRocket()
   if (followedKey && !rocket) stopFollowing()
-  followSelection(selected, rocket)
+  followSelection(selected, rocket, customizedNode())
+  liftView(!!(selected || rocket))
   controls.update()
   stars.position.copy(camera.position)
   shootingStars.position.copy(camera.position)
@@ -826,12 +966,13 @@ const resize = () => {
 const onPointerDown = (e: PointerEvent) => { downAt = { x: e.clientX, y: e.clientY } }
 
 const onPointerMove = (event: PointerEvent) => {
+  if (props.customizing) return
   setHovered(props.overview ? sunAt(event) : undefined)
-  if (!props.overview) renderer.domElement.style.cursor = activeSunAt(event) ? 'pointer' : ''
+  if (!props.overview) renderer.domElement.style.cursor = activeSunAt(event) || readable(rocketAt(event)) ? 'pointer' : ''
 }
 
 const onClick = (event: MouseEvent) => {
-  if (Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y) > 5) return
+  if (props.customizing || Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y) > 5) return
   if (props.overview) {
     const sun = sunAt(event)
     if (sun) openSun(sun)
@@ -841,6 +982,8 @@ const onClick = (event: MouseEvent) => {
   if (rocket) {
     followedKey = rocket.userData.key
     adjustingZoom = true
+    emit('rocket', rocket.userData.key)
+    if (readable(rocket)) emit('read', rocket.userData.key)
     return
   }
   stopFollowing()
@@ -1022,7 +1165,7 @@ onMounted(() => {
 
     const orbitsFolder = pane.addFolder({ title: 'Orbites', expanded: false })
     orbitsFolder.addBinding(tweaks, 'orbitColor', { label: 'Couleur' })
-    orbitsFolder.addBinding(tweaks, 'orbitWidth', { label: 'Épaisseur', min: 0.5, max: 6, step: 0.5 })
+    orbitsFolder.addBinding(tweaks, 'orbitWidth', { label: 'Épaisseur', min: 0.5, max: 6, step: 0.1 })
     orbitsFolder.addBinding(tweaks, 'orbitOpacity', { label: 'Opacité', min: 0, max: 1, step: 0.01 })
     orbitsFolder.on('change', updateOrbits)
 
@@ -1088,7 +1231,18 @@ onMounted(() => {
 watch(() => [props.system, props.decor, props.channels], () => { syncSystem(); syncLetters() })
 watch(() => props.system?.channel.id, () => { followedKey = null; adjustingZoom = true })
 watch(() => props.messages, syncLetters)
+watch(() => props.followedLetter, (key) => {
+  if (!key) return
+  followedKey = key
+  adjustingZoom = true
+})
 watch(() => props.selectedId, () => { followedKey = null; adjustingZoom = true })
+watch(() => props.customizing, previewLook, { deep: true })
+watch(() => props.decor, previewLook)
+watch(() => props.customizing?.id, () => {
+  adjustingZoom = true
+  setHovered(undefined)
+})
 watch(() => props.overview, () => {
   followedKey = null
   adjustingZoom = true

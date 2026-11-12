@@ -4,9 +4,21 @@ export const useScene = () => ({
   system: useState<SolarSystem | null>('scene-system', () => null),
   messages: useState<Message[]>('scene-messages', () => []),
   selectedId: useState<number | null>('scene-selected', () => null),
+  // Modale de la planète cliquée (nom, créateur, bio)
+  profileOpen: useState<boolean>('scene-profile-open', () => false),
+  // Fusée cliquée (clé de sa lettre) : son panneau ne s'affiche que pour l'expéditeur d'une lettre en route
+  clickedRocket: useState<string | null>('scene-clicked-rocket', () => null),
   decor: useState<SolarSystem | null>('scene-decor', () => null),
   channels: useState<Channel[]>('scene-channels', () => []),
+  followedLetter: useState<string | null>('scene-followed-letter', () => null),
+  // Fusée posée que le destinataire vient d'ouvrir : son nez reste ouvert tant que la lettre est affichée
+  openedLetter: useState<string | null>('scene-opened-letter', () => null),
+  // texture : URL de l'image (importée ou en aperçu), null pour la roche par défaut
+  customizing: useState<{ id: number; look: PlanetLook; texture: string | null } | null>('scene-customizing', () => null),
 })
+
+// Identifie la fusée d'une lettre, côté scène comme côté pages
+export const letterKey = (m: Message) => `${m.user_id}:${m.recipient_id}:${m.creation_date}`
 
 // Décor de l'accueil : general vu de l'extérieur
 export const buildDecor = (users: PublicUser[]): SolarSystem => ({
@@ -21,6 +33,12 @@ export const buildDecor = (users: PublicUser[]): SolarSystem => ({
     color: u.planet_color,
     size: u.planet_size,
     rings: u.planet_rings,
+    tilt: u.planet_tilt,
+    ring_color: u.planet_ring_color,
+    ring_size: u.planet_ring_size,
+    spin: u.planet_spin,
+    moon: u.planet_moon,
+    texture_version: u.planet_texture_version,
   })),
   min_distance: 1,
   max_distance: 10,

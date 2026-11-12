@@ -1,7 +1,7 @@
 package messages
 
 type Message struct {
-	ID           int64  `json:"-"`
+	ID           int64  `db:"id" json:"id"`
 	Content      string `json:"content"`
 	UserID       int64  `db:"user_id" json:"user_id"`
 	User         string `json:"user"`
@@ -13,4 +13,6 @@ type Message struct {
 	Recipient   *string `db:"recipient" json:"recipient"`
 	DeliverAt   string  `db:"deliver_at" json:"deliver_at"`
 	InTransit   bool    `db:"in_transit" json:"in_transit"`
+	// Fusée retirée de la planète du destinataire : la lettre reste lisible, la scène ne l'affiche plus
+	RocketRemoved bool `db:"rocket_removed" json:"rocket_removed"`
 }

@@ -2,7 +2,7 @@
   <v-dialog class="dialog-content"  :model-value="true" max-width="420" persistent>
     <img class="zibzib" src="/zibzib.svg" alt="">
     <div class="intro-button-text">
-<div class="intro">
+<div class="intro pixel-frame">
       <h1 class="text-h5">Bienvenue, voyageur.</h1>
       <div class="intro-content">
       <p>{{ text.slice(0, typed) }}<span class="typing-rest">{{ text.slice(typed) }}</span></p>
@@ -10,7 +10,7 @@
       </div>
     </div>
     </div>
-    <button class="btn-intro" type="button" @click="navigateTo('/channels')">Continuer</button>
+    <button class="btn-intro pixel-btn" type="button" @click="navigateTo('/planet')">Continuer</button>
   </v-dialog>
 </template>
 
@@ -24,13 +24,14 @@
 
 .btn-intro {
   color: white;
+  justify-content: center;
+  display: flex;
+  margin-inline: auto;
+  margin-top: 32px;
 }
 
 .intro {
-  padding: 6px;
-  border: 18px solid transparent;
-  border-image: url('/pixel-border.svg') 18 fill / 18px stretch;
-  image-rendering: pixelated;
+  padding: var(--space-3);
 }
 
 .intro-content {
@@ -38,7 +39,6 @@
   flex-direction: column;
   gap: 12px;
   color: white;
-  font-family: 'pixelifySansRegular', sans-serif;
 }
 
 .zibzib {
@@ -55,7 +55,6 @@
   padding: unset;
   margin-bottom: 12px;
   color: white;
-  font-family: 'pixelifySansRegular', sans-serif;
 }
 
 </style>

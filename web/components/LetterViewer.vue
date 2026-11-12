@@ -1,15 +1,17 @@
 <template>
   <v-dialog v-model="open" :fullscreen="xs">
     <div class="dialog-wrapper">
-      <div class="dialog-content">
+      <div class="dialog-content pixel-frame">
         <div class="letter-content">
-          <div v-for="block in blocks" :key="block.id" :style="{ top: block.top + 'px', left: block.left + 'px', transform: `rotate(${block.rotation}deg)`, fontSize: block.fontSize + 'px' }" class="letter-block">
+          <canvas ref="canvas" class="drawing-layer" width="900" height="1200"></canvas>
+          <div v-for="block in blocks" :key="block.id" :style="{ top: block.top + 'px', left: block.left + 'px', transform: `rotate(${block.rotation}deg)`, fontSize: block.fontSize + 'px', color: block.color }" class="letter-block">
             <p class="letter-text">{{ block.text }}</p>
           </div>
         </div>
       </div>
-      <div class="letter-actions">
+      <div class="letter-actions pixel-frame">
         <span class="text-caption px-2">De {{ from }}</span>
+        <v-btn v-if="removable" variant="text" color="red" prepend-icon="mdi-rocket-launch-outline" @click="emit('remove')">Retirer la fusée</v-btn>
         <v-btn variant="text" @click="open = false">Fermer</v-btn>
       </div>
     </div>
@@ -31,18 +33,14 @@
   align-items: center;
   gap: 8px;
   padding: 8px;
-  border-radius: 16px;
-  background: white;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
 }
 
 .dialog-content {
-  background: white;
   height: 90vh;
   width: 90vw;
   justify-content: center;
   display: flex;
-  border-radius: 24px;
   overflow-y: scroll;
   padding: 24px;
 }
@@ -53,7 +51,14 @@
   width: 900px;
   height: 1200px;
   position: relative;
-  background: rgb(216, 216, 216);
+  color: white;
+}
+
+.drawing-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .letter-block {
@@ -76,7 +81,7 @@
     width: 100%;
     height: 100%;
     padding: 12px;
-    border-radius: 0;
+    clip-path: none;
     justify-content: flex-start;
     overflow: auto;
   }
@@ -89,11 +94,21 @@
 </style>
 
 <script setup lang="ts">
-defineProps<{
+const props = defineProps<{
   blocks: LetterBlock[],
+  strokes: Stroke[],
   from: string,
+  removable?: boolean,
 }>()
+const emit = defineEmits<{ remove: [] }>()
 
 const open = defineModel<boolean>({ default: false })
 const { xs } = useDisplay()
+
+const canvas = ref<HTMLCanvasElement | null>(null)
+
+watch([canvas, () => props.strokes], () => {
+  const ctx = canvas.value?.getContext('2d')
+  if (ctx) drawStrokes(ctx, props.strokes)
+})
 </script>

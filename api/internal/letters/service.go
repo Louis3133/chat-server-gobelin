@@ -17,6 +17,7 @@ var (
 	ErrSelfLetter         = errors.New("cannot send a letter to yourself")
 	ErrNotMember          = errors.New("sender is not a member of the channel")
 	ErrRecipientNotMember = errors.New("recipient is not a member of the channel")
+	ErrNotCancellable     = errors.New("letter not found, not yours, or already arrived")
 )
 
 // Service envoie les lettres et décrit le système solaire d'un salon. Il est seul à écrire dans `relations`.
@@ -84,7 +85,10 @@ func (s *Service) Send(ctx context.Context, channelID int64, sender users.User, 
 	if err != nil {
 		return nil, err
 	}
+	var approachedFrom *float64
 	if reply {
+		before := distance
+		approachedFrom = &before
 		distance = s.rules.Approached(distance)
 		_, err = tx.ExecContext(ctx,
 			`UPDATE relations SET distance = $4, exchange_count = exchange_count + 1, last_interaction = NOW()
@@ -104,10 +108,10 @@ func (s *Service) Send(ctx context.Context, channelID int64, sender users.User, 
 	delay := s.rules.Delay(distance)
 	var letter messages.Message
 	err = tx.GetContext(ctx, &letter,
-		`INSERT INTO messages (content, user_id, channel_id, recipient_id, creation_date, deliver_at)
-		 VALUES ($1, $2, $3, $4, NOW(), NOW() + make_interval(secs => $5::double precision))
+		`INSERT INTO messages (content, user_id, channel_id, recipient_id, creation_date, deliver_at, approached_from)
+		 VALUES ($1, $2, $3, $4, NOW(), NOW() + make_interval(secs => $5::double precision), $6)
 		 RETURNING id, content, user_id, recipient_id, creation_date, deliver_at`,
-		content, sender.ID, channelID, recipientID, delay.Seconds())
+		content, sender.ID, channelID, recipientID, delay.Seconds(), approachedFrom)
 	if err != nil {
 		return nil, fmt.Errorf("Error creating letter: %w", err)
 	}
@@ -118,6 +122,53 @@ func (s *Service) Send(ctx context.Context, channelID int64, sender users.User, 
 	letter.User = sender.Username
 	letter.InTransit = delay > 0
 	return &letter, nil
+}
+
+// Cancel annule une lettre encore en route, pour son expéditeur seulement : elle est supprimée, et si c'était une
+// réponse, le couple retrouve sa distance d'avant. Tant qu'elle est en route, aucune autre lettre du couple n'a pu
+// les rapprocher (une réponse exige que la lettre précédente soit arrivée), on peut donc remettre cette distance.
+func (s *Service) Cancel(ctx context.Context, sender users.User, messageID int64) error {
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("Error starting transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var letter struct {
+		ChannelID      int64    `db:"channel_id"`
+		RecipientID    int64    `db:"recipient_id"`
+		ApproachedFrom *float64 `db:"approached_from"`
+	}
+	err = tx.GetContext(ctx, &letter,
+		`SELECT channel_id, recipient_id, approached_from FROM messages
+		 WHERE id = $1 AND user_id = $2 AND recipient_id IS NOT NULL AND deliver_at > NOW()
+		 FOR UPDATE`,
+		messageID, sender.ID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotCancellable
+	}
+	if err != nil {
+		return fmt.Errorf("Error reading letter: %w", err)
+	}
+
+	if letter.ApproachedFrom != nil {
+		a, b := sender.ID, letter.RecipientID
+		if a > b {
+			a, b = b, a
+		}
+		_, err = tx.ExecContext(ctx,
+			`UPDATE relations SET distance = $4, exchange_count = GREATEST(exchange_count - 1, 0)
+			 WHERE channel_id = $1 AND user_a = $2 AND user_b = $3`,
+			letter.ChannelID, a, b, *letter.ApproachedFrom)
+		if err != nil {
+			return fmt.Errorf("Error restoring relation: %w", err)
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM messages WHERE id = $1`, messageID); err != nil {
+		return fmt.Errorf("Error deleting letter: %w", err)
+	}
+	return tx.Commit()
 }
 
 func isMember(ctx context.Context, q sqlx.QueryerContext, channelID, userID int64) (bool, error) {
@@ -160,9 +211,18 @@ type Planet struct {
 	Distance     *float64 `json:"distance"`      // nil pour soi-même
 	DelaySeconds *float64 `json:"delay_seconds"` // temps réel d'une lettre vers cette personne, maintenant
 	Exchanges    int      `json:"exchanges"`     // réponses échangées avec elle
-	Color        string   `json:"color"`         // apparence choisie à l'inscription
+	Color        string   `json:"color"`         // apparence choisie par la personne
 	Size         float64  `json:"size"`
 	Rings        bool     `json:"rings"`
+	Tilt         float64  `json:"tilt"`
+	RingColor    string   `json:"ring_color"`
+	RingSize     float64  `json:"ring_size"`
+	Spin         float64  `json:"spin"`
+	Moon         bool     `json:"moon"`
+	Texture      int64    `json:"texture_version"` // 0 : pas de texture importée
+	PlanetName   string   `json:"planet_name"`     // profil, affiché au clic sur la planète
+	Pronouns     string   `json:"pronouns"`
+	Bio          string   `json:"bio"`
 }
 
 type System struct {
@@ -181,12 +241,15 @@ func (s *Service) System(ctx context.Context, channel channels.Channel, me int64
 		Username  string  `db:"username"`
 		Distance  float64 `db:"distance"`
 		Exchanges int     `db:"exchanges"`
-		Color     string  `db:"planet_color"`
-		Size      float64 `db:"planet_size"`
-		Rings     bool    `db:"planet_rings"`
+		users.Planet
+		users.Profile
+		Texture int64 `db:"planet_texture_version"`
 	}
 	err := s.db.SelectContext(ctx, &rows,
 		`SELECT u.id, u.username, u.planet_color, u.planet_size, u.planet_rings,
+		        u.planet_tilt, u.planet_ring_color, u.planet_ring_size, u.planet_spin, u.planet_moon,
+		        u.planet_name, u.pronouns, u.bio,
+		        CASE WHEN u.planet_texture IS NULL THEN 0 ELSE u.planet_texture_version END AS planet_texture_version,
 		        COALESCE(r.distance, $3::double precision) AS distance,
 		        COALESCE(r.exchange_count, 0) AS exchanges
 		 FROM user_channels uc
@@ -202,7 +265,9 @@ func (s *Service) System(ctx context.Context, channel channels.Channel, me int64
 
 	planets := make([]Planet, 0, len(rows))
 	for _, row := range rows {
-		p := Planet{ID: row.ID, Username: row.Username, Me: row.ID == me, Color: row.Color, Size: row.Size, Rings: row.Rings}
+		p := Planet{ID: row.ID, Username: row.Username, Me: row.ID == me, Color: row.Color, Size: row.Size, Rings: row.Rings,
+			Tilt: row.Tilt, RingColor: row.RingColor, RingSize: row.RingSize, Spin: row.Spin, Moon: row.Moon, Texture: row.Texture,
+			PlanetName: row.PlanetName, Pronouns: row.Pronouns, Bio: row.Bio}
 		if !p.Me {
 			distance := row.Distance
 			delay := s.rules.Delay(distance).Seconds()

@@ -13,7 +13,7 @@ import (
 	"chat-gobelin-api/internal/messages"
 )
 
-const maxContentLength = 5000
+const maxContentLength = 100000
 
 type messageHandler struct {
 	messageRepo messages.Repo
@@ -118,7 +118,7 @@ func (h messageHandler) CreateMessage(writer http.ResponseWriter, request *http.
 		return
 	}
 	if req.Content == "" || len(req.Content) > maxContentLength {
-		http.Error(writer, "content must be between 1 and 5000 characters", http.StatusBadRequest)
+		http.Error(writer, "content must be between 1 and 100000 characters", http.StatusBadRequest)
 		return
 	}
 
@@ -176,6 +176,54 @@ func (h messageHandler) System(writer http.ResponseWriter, request *http.Request
 	}
 
 	writeJSON(writer, system)
+}
+
+// CancelLetter : DELETE /channel/message?message=ID, l'expéditeur annule une lettre encore en route
+func (h messageHandler) CancelLetter(writer http.ResponseWriter, request *http.Request) {
+	user, ok := currentUser(writer, request)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(request.URL.Query().Get("message"), 10, 64)
+	if err != nil {
+		http.Error(writer, "message parameter required", http.StatusBadRequest)
+		return
+	}
+	err = h.letters.Cancel(request.Context(), *user, id)
+	if errors.Is(err, letters.ErrNotCancellable) {
+		http.Error(writer, "Letter not found, not yours, or already arrived", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("Error cancelling letter: %s", err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+// RemoveRocket : DELETE /channel/message/rocket?message=ID, réservé au destinataire d'une lettre arrivée
+func (h messageHandler) RemoveRocket(writer http.ResponseWriter, request *http.Request) {
+	user, ok := currentUser(writer, request)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(request.URL.Query().Get("message"), 10, 64)
+	if err != nil {
+		http.Error(writer, "message parameter required", http.StatusBadRequest)
+		return
+	}
+	err = h.messageRepo.RemoveRocket(request.Context(), id, *user)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(writer, "Letter not found, not yours, or still in transit", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("Error removing rocket: %s", err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
 }
 
 func writeJSON(writer http.ResponseWriter, value interface{}) {

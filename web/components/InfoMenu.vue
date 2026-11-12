@@ -1,13 +1,15 @@
 <template>
   <div class="info-menu">
     <div class="info-menu__bar">
-      <v-btn :icon="open ? 'mdi-close' : 'mdi-menu'" color="white" variant="outlined" @click="open = !open" />
+      <v-btn v-if="!backOnly" :icon="open ? 'mdi-close' : 'mdi-menu'" color="white" variant="outlined" @click="open = !open" />
       <v-btn v-if="backLabel" icon="mdi-arrow-left" color="white" variant="outlined" :title="backLabel" :aria-label="backLabel" @click="emit('back')" />
-      <slot name="actions" />
-      <span v-if="title" class="info-menu__title">{{ title }}</span>
+      <template v-if="!backOnly">
+        <slot name="actions" />
+        <span v-if="title" class="info-menu__title">{{ title }}</span>
+      </template>
     </div>
     <Transition name="info-menu-slide">
-      <div v-show="open" class="info-menu__panel">
+      <div v-show="open && !backOnly" class="info-menu__panel">
         <slot />
       </div>
     </Transition>
@@ -15,7 +17,7 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{ title?: string; backLabel?: string }>()
+defineProps<{ title?: string; backLabel?: string; backOnly?: boolean }>()
 const emit = defineEmits<{ back: [] }>()
 
 const open = ref(false)
@@ -33,15 +35,12 @@ const open = ref(false)
   max-width: calc(100vw - 200px);
 }
 
-.info-menu__bar :deep(.v-btn) {
-  background: rgba(15, 18, 35, 0.78) !important;
-}
-
 .info-menu__title {
   min-width: 0;
   overflow: hidden;
   color: #fff;
-  font: 600 18px/1 monospace;
+  font-size: var(--subtitle-medium-size);
+  font-weight: var(--subtitle-medium-weight);
   text-shadow: 1px 1px 0 #000;
   text-overflow: ellipsis;
   white-space: nowrap;

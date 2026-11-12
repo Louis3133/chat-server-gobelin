@@ -1,5 +1,5 @@
-// Package letters porte les règles du jeu : la distance entre deux planètes décide du temps que met une lettre
-// à arriver, et plus on se répond, plus on se rapproche. Tout est réglable par variables d'environnement.
+// Package letters porte les règles du jeu : par défaut, une lettre met 1 minute à arriver et les planètes ne se
+// rapprochent pas. Délai selon la distance et rapprochement restent réglables par variables d'environnement.
 package letters
 
 import (
@@ -15,7 +15,7 @@ type Rules struct {
 	MaxDistance float64       // distance de départ de deux inconnus, aussi le plafond
 	MinDelay    time.Duration // délai d'une lettre à la distance minimale (temps « simulé »)
 	MaxDelay    time.Duration // délai d'une lettre à la distance maximale (temps « simulé »)
-	Approach    float64       // part de distance retirée à chaque réponse (0.10 = 10 %)
+	Approach    float64       // part de distance retirée à chaque réponse (0.10 = 10 %, 0 = jamais)
 	TimeScale   float64       // 1 = temps réel ; 3600 = une heure simulée dure une seconde (démo)
 }
 
@@ -24,8 +24,8 @@ func DefaultRules() Rules {
 		MinDistance: 1,
 		MaxDistance: 10,
 		MinDelay:    time.Minute,
-		MaxDelay:    3 * time.Hour,
-		Approach:    0.10,
+		MaxDelay:    time.Minute,
+		Approach:    0,
 		TimeScale:   1,
 	}
 }
@@ -65,8 +65,8 @@ func (r Rules) Validate() error {
 		return fmt.Errorf("letters: la distance maximale (%v) doit dépasser la minimale (%v)", r.MaxDistance, r.MinDistance)
 	case r.MinDelay < 0 || r.MaxDelay < r.MinDelay:
 		return fmt.Errorf("letters: délais incohérents (min %v, max %v)", r.MinDelay, r.MaxDelay)
-	case r.Approach <= 0 || r.Approach >= 1:
-		return fmt.Errorf("letters: le rapprochement doit être entre 0 et 1 exclus (reçu %v)", r.Approach)
+	case r.Approach < 0 || r.Approach >= 1:
+		return fmt.Errorf("letters: le rapprochement doit être entre 0 inclus et 1 exclus (reçu %v)", r.Approach)
 	case r.TimeScale <= 0:
 		return fmt.Errorf("letters: le facteur de temps doit être > 0 (reçu %v)", r.TimeScale)
 	}
