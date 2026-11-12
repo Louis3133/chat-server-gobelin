@@ -7,6 +7,15 @@
         <button class="pixel-btn wide" type="button" @click="open('login')">Connexion</button>
       </template>
 
+      <form v-else-if="mode === 'pseudo'" class="auth-form" @submit.prevent="onPseudo">
+        <h1 class="text-heading">Choisir son pseudo</h1>
+        <label class="field">
+          <span class="field-label">Pseudo</span>
+          <input v-model="pseudo" :maxlength="pseudoMax" autocomplete="nickname" spellcheck="false" autofocus>
+        </label>
+        <button class="pixel-btn wide" type="submit" :disabled="!pseudo.trim()">Continuer</button>
+      </form>
+
       <form v-else class="auth-form" @submit.prevent="onSubmit">
         <h1 class="text-heading">{{ mode === 'login' ? 'Connexion' : 'Créer un compte' }}</h1>
         <label class="field">
@@ -38,11 +47,13 @@
 <script setup lang="ts">
 const api = useChatApi()
 
-const mode = ref<'home' | 'login' | 'register'>('home')
+const mode = ref<'home' | 'login' | 'register' | 'pseudo'>('home')
 const loading = ref(false)
 const username = ref('')
 const password = ref('')
 const showPassword = ref(false)
+const pseudo = ref('')
+const pseudoMax = PSEUDO_MAX
 const snackbar = ref(false)
 const snackbarText = ref('')
 
@@ -67,12 +78,22 @@ const onSubmit = async () => {
       await api.register(username.value, password.value)
     }
     await api.login(username.value, password.value)
-    await navigateTo(isRegister ? '/welcome' : '/channels')
+    if (isRegister) {
+      mode.value = 'pseudo'
+      return
+    }
+    await navigateTo('/channels')
   } catch (error) {
     fail(error)
   } finally {
     loading.value = false
   }
+}
+
+const onPseudo = async () => {
+  if (!pseudo.value.trim()) return
+  savePseudo(pseudo.value)
+  await navigateTo('/welcome')
 }
 
 onMounted(async () => {

@@ -9,7 +9,7 @@
         <span class="speaker pixel-btn">Zib zib</span>
       </div>
       <div class="bubble pixel-frame">
-        <h1 class="text-subtitle">Bienvenue, voyageur.</h1>
+        <h1 class="text-subtitle">Bienvenue, {{ pseudo }}.</h1>
         <div class="texts">
           <p v-for="(text, i) in BUBBLES" :key="i" :class="{ current: i === index }" class="text-body">
             <template v-if="i === index">{{ text.slice(0, typed) }}<span class="typing-rest">{{ text.slice(typed) }}</span></template>
@@ -100,6 +100,8 @@
 
 <script setup lang="ts">
 definePageMeta({ middleware: 'auth' })
+
+const pseudo = loadPseudo()
 
 const BUBBLES = [
   "Quelque part, au milieu de l'immensité, un nouvel astre vient de naître. Le vôtre.",
