@@ -1,8 +1,8 @@
 <template>
   <div class="app">
     <!-- La scène vit ici, derrière toutes les pages : elle ne se recharge pas à la navigation -->
-    <SolarScene class="background" :system="system" :decor="decor" :channels="channels" :messages="messages" :selected-id="selectedId" :followed-letter="followedLetter" :opened-letter="openedLetter" :customizing="customizing" :overview="!system" @select="pick" @open="openChannel" @center="selectedId = null" @read="openedLetter = $event" @rocket="onRocket" />
-    <template v-if="route.path !== '/' && !planetView">
+    <SolarScene class="background" :system="system" :decor="decor" :channels="channels" :messages="messages" :selected-id="selectedId" :followed-letter="followedLetter" :opened-letter="openedLetter" :customizing="customizing" :focus-area="focusArea" :overview="!system" @select="pick" @open="openChannel" @center="selectedId = null" @read="openedLetter = $event" @rocket="onRocket" />
+    <template v-if="route.path !== '/' && route.path !== '/planet' && !planetView">
       <v-btn v-if="xs" class="logout" icon="mdi-logout" color="white" variant="outlined" title="Déconnexion" aria-label="Déconnexion" @click="logout" />
       <v-btn v-else class="logout" color="white" variant="outlined" prepend-icon="mdi-logout" @click="logout">
         Déconnexion
@@ -15,7 +15,7 @@
 </template>
 
 <script setup lang="ts">
-const { system, messages, selectedId, profileOpen, clickedRocket, decor, channels, followedLetter, openedLetter, customizing } = useScene()
+const { system, messages, selectedId, profileOpen, clickedRocket, decor, channels, followedLetter, openedLetter, customizing, focusArea } = useScene()
 const api = useChatApi()
 const route = useRoute()
 const { xs } = useDisplay()
@@ -49,6 +49,23 @@ const openChannel = async (channel: Channel) => {
   await api.enterChannel(channel.name).catch(() => {})
   await navigateTo(`/channels/${channel.id}`)
 }
+
+// Sons : musique dès l'arrivée, débloqués au premier geste ; un clic sur un bouton désactivé a son propre son
+const sound = useSound()
+const onPress = (event: PointerEvent) => {
+  sound.unlock()
+  if ((event.target as Element | null)?.closest?.('button:disabled, .v-btn--disabled, [aria-disabled="true"]')) sound.play('disabled')
+}
+const onKey = () => sound.unlock()
+onMounted(() => {
+  sound.startMusic()
+  window.addEventListener('pointerdown', onPress, true)
+  window.addEventListener('keydown', onKey, true)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('pointerdown', onPress, true)
+  window.removeEventListener('keydown', onKey, true)
+})
 
 // Décor avant tout : routes publiques, une erreur ici ne bloque rien
 onMounted(async () => {

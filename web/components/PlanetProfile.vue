@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div v-if="open" class="planet-profile scene-panel pixel-frame">
+    <div v-if="open" ref="panel" class="planet-profile scene-panel pixel-frame">
       <div class="planet-profile__header">
         <div class="planet-profile__titles">
           <h2 class="text-heading">{{ planet.planet_name || `Planète de ${planet.username}` }}</h2>
@@ -9,13 +9,13 @@
           </p>
         </div>
         <div class="planet-profile__actions">
-          <v-btn icon="mdi-information-outline" :title="expanded ? 'Moins d\'infos' : 'Plus d\'infos'" :aria-label="expanded ? 'Moins d\'infos' : 'Plus d\'infos'" :aria-expanded="expanded" @click="expanded = !expanded" />
-          <v-btn v-if="!planet.me" icon="mdi-email-edit-outline" title="Écrire une lettre" aria-label="Écrire une lettre" @click="emit('write')" />
+          <v-btn icon="mdi-information-outline" :title="expanded ? 'Moins d\'infos' : 'Plus d\'infos'" :aria-label="expanded ? 'Moins d\'infos' : 'Plus d\'infos'" :aria-expanded="expanded" @click="toggle" />
+          <v-btn v-if="!planet.me" title="Écrire une lettre" aria-label="Écrire une lettre" @click="emit('write')"><img class="pixel-icon" src="/icons/actions/send.svg" alt=""></v-btn>
         </div>
       </div>
-      <p v-if="planet.bio" class="planet-profile__bio text-body" :class="{ 'planet-profile__bio--full': expanded }">{{ planet.bio }}</p>
+      <p v-if="planet.bio" class="planet-profile__bio text-body" :class="{ 'planet-profile__bio--full': shown }">{{ planet.bio }}</p>
 
-      <template v-if="expanded && !planet.me">
+      <div v-if="shown && !planet.me" ref="more" class="planet-profile__more">
         <hr class="planet-profile__separator">
         <h3 class="text-subtitle-medium">Vos lettres</h3>
         <p v-if="!exchanged.length" class="text-body">Aucune lettre échangée pour l'instant.</p>
@@ -30,7 +30,7 @@
             </button>
           </li>
         </ul>
-      </template>
+      </div>
     </div>
   </Teleport>
 </template>
@@ -41,9 +41,43 @@ const emit = defineEmits<{ write: [], read: [letter: Message] }>()
 
 const open = defineModel<boolean>({ default: false })
 const expanded = ref(false)
+const shown = ref(false)
+const panel = ref<HTMLElement>()
+const more = ref<HTMLElement>()
 const { system } = useScene()
+let resize: Animation | undefined
 
-watch(open, (value) => { if (!value) expanded.value = false })
+watch(open, (value) => {
+  if (value) return
+  resize?.cancel()
+  expanded.value = shown.value = false
+})
+
+// Ouverture et fermeture animées de « Plus d'infos »
+const heightWith = async (value: boolean) => {
+  shown.value = value
+  await nextTick()
+  return panel.value?.offsetHeight ?? 0
+}
+
+const toggle = async () => {
+  const target = !expanded.value
+  expanded.value = target
+  const el = panel.value
+  if (!el || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    shown.value = target
+    return
+  }
+  const from = el.offsetHeight
+  resize?.cancel()
+  more.value?.getAnimations().forEach((a) => a.cancel())
+  const to = await heightWith(target)
+  if (!target) await heightWith(true)
+  resize = el.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: 300, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' })
+  if (target) more.value?.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 250, delay: 80, easing: 'ease-out', fill: 'backwards' })
+  else more.value?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 150, fill: 'forwards' })
+  resize.onfinish = () => { shown.value = target }
+}
 
 // Seulement les lettres entre cette personne et moi, les plus récentes d'abord
 const exchanged = computed(() => {
@@ -115,6 +149,18 @@ const status = (m: Message) => {
 
 .planet-profile__bio--full {
   display: block;
+}
+
+.planet-profile__more {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+}
+
+.planet-profile__more > * {
+  flex: none;
 }
 
 .planet-profile__separator {

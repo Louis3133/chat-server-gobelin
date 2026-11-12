@@ -15,7 +15,6 @@
     "tweakpane": "^4.0.5",
     "tweakpane-plugin-media": "^1.0.8",
     "vue": "^3.2.13",
-    "vue-router": "^4.0.0",
     "vuetify": "^3.0.0"
   },
   "devDependencies": {

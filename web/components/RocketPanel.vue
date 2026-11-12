@@ -5,7 +5,10 @@
         <h2 class="text-heading">Lettre pour {{ recipient }}</h2>
         <p class="text-subtitle-medium">{{ remaining > 0 ? `Arrivée dans ${formatRemaining(remaining)}` : 'Arrivée imminente' }}</p>
       </div>
-      <v-btn prepend-icon="mdi-close-circle-outline" :loading="cancelling" :disabled="remaining <= 0" @click="emit('cancel')">Annuler la lettre</v-btn>
+      <v-btn :loading="cancelling" :disabled="remaining <= 0" @click="emit('cancel')">
+        <template #prepend><img class="pixel-icon" src="/icons/actions/close.svg" alt=""></template>
+        Annuler la lettre
+      </v-btn>
     </div>
   </Teleport>
 </template>

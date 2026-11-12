@@ -1,7 +1,9 @@
 <template>
   <div class="info-menu">
     <div class="info-menu__bar">
-      <v-btn v-if="!backOnly" :icon="open ? 'mdi-close' : 'mdi-menu'" color="white" variant="outlined" @click="open = !open" />
+      <v-btn v-if="!backOnly && $slots.default" :icon="open ? undefined : 'mdi-menu'" color="white" variant="outlined" :aria-label="open ? 'Fermer le menu' : 'Ouvrir le menu'" @click="open = !open">
+        <img v-if="open" class="pixel-icon" src="/icons/actions/close.svg" alt="">
+      </v-btn>
       <v-btn v-if="backLabel" icon="mdi-arrow-left" color="white" variant="outlined" :title="backLabel" :aria-label="backLabel" @click="emit('back')" />
       <template v-if="!backOnly">
         <slot name="actions" />
@@ -9,7 +11,7 @@
       </template>
     </div>
     <Transition name="info-menu-slide">
-      <div v-show="open && !backOnly" class="info-menu__panel">
+      <div v-if="$slots.default" v-show="open && !backOnly" class="info-menu__panel">
         <slot />
       </div>
     </Transition>

@@ -1,5 +1,7 @@
 <template>
+  <div>
   <InfoMenu title="Mes salons">
+  <template v-if="me?.is_admin" #default>
   <v-card class="py-8">
     <div class="d-flex align-center mb-4">
       <h1 class="text-h5 flex-grow-1">Bonjour {{ me?.username }}</h1>
@@ -19,13 +21,13 @@
       <v-btn :disabled="!toJoin" :loading="busy" type="submit" color="primary">Rejoindre</v-btn>
     </v-form>
 
-    <h2 class="text-h6 mb-2">Créer un salon (admin)</h2>
+    <h2 class="text-h6 mb-2">Créer un salon</h2>
     <v-form class="d-flex ga-2" @submit.prevent="create">
       <v-text-field v-model="newName" label="Nom du salon" hide-details />
       <v-btn :disabled="!newName" :loading="busy" type="submit" color="primary">Créer</v-btn>
     </v-form>
 
-    <template v-if="me?.is_admin">
+    <template v-if="me">
       <h2 class="text-h6 mt-6 mb-2">Administration</h2>
       <h3 class="text-subtitle-1">Salons</h3>
       <v-list density="compact" class="mb-4">
@@ -44,10 +46,11 @@
         </v-list-item>
       </v-list>
     </template>
-
-    <v-snackbar v-model="snackbar" color="red" :timeout="3000">{{ snackbarText }}</v-snackbar>
   </v-card>
+  </template>
   </InfoMenu>
+  <v-snackbar v-model="snackbar" color="red" :timeout="3000">{{ snackbarText }}</v-snackbar>
+  </div>
 </template>
 
 <script setup lang="ts">

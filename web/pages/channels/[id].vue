@@ -1,4 +1,5 @@
 <template>
+  <div>
   <InfoMenu :title="selected?.username ?? system?.channel.name" :back-label="composerOpen ? undefined : selected ? 'Retour au salon' : 'Mes salons'" :back-only="!!selected" @back="back">
   <template #actions>
     <v-btn icon="mdi-email-edit-outline" color="white" variant="outlined" title="Écrire à…" aria-label="Écrire à…" @click="searchOpen = !searchOpen" />
@@ -19,48 +20,13 @@
       @keydown.esc="searchOpen = false"
     />
   </template>
-  <v-card class="infos-panel px-4 py-8">
-    <h1 v-if="!selected" class="text-h5 mb-4">{{ system?.channel.name ?? 'Salon' }}</h1>
-    <h1 v-if="selected" class="text-h5 mb-4">{{ selected.username }}</h1>
-
-    <p v-if="!selected" class="text-caption mb-6">Clique sur une planète pour lui écrire et voir votre conversation. Les points jaunes sont des lettres en route.</p>
-
-    <h2 class="text-h6 mb-2">Écrire</h2>
-    <RocketPanel v-if="rocketLetter" :letter="rocketLetter" :recipient="rocketLetter.recipient ?? ''" :cancelling="cancelling" @cancel="cancelLetter" @arrived="onArrived" />
-    <PlanetProfile v-if="selected" v-model="profileOpen" :planet="selected" :letters="messages" @write="writeSelected" @read="read" />
-    <LetterComposer v-if="selected" v-model="composerOpen" :recipient="selected" :channel-id="channelId" @sent="onSent" @failed="notify" />
-    <LetterViewer v-if="reading" v-model="readerOpen" :blocks="reading.blocks" :strokes="reading.strokes" :from="reading.from" :removable="canRemove" @remove="removeRocket" />
-
-    <div class="d-flex align-center mb-2">
-      <h2 class="text-h6 flex-grow-1">Boîte de lettres</h2>
-      <v-btn variant="text" icon="mdi-refresh" :loading="loading" @click="load" />
-    </div>
-
-    <v-btn @click="composerOpen = true" v-if="selected">Ecrire</v-btn>
-    <p v-if="!loading && !shown.length">Aucun message pour l'instant.</p>
-    <v-card v-for="(m, i) in shown" :key="i" class="mb-2 pa-2" :variant="m.in_transit ? 'tonal' : 'elevated'">
-      <div class="text-caption">
-        <strong>{{ m.user }}</strong>
-        <template v-if="m.recipient_id"> → {{ m.recipient ?? 'moi' }}</template>
-        <template v-else> → tout le salon</template>
-        · envoyé {{ formatDate(m.creation_date) }}
-      </div>
-      <p v-if="m.in_transit && m.recipient_id === me?.id" class="font-italic">
-        Une lettre est en route, arrivée {{ formatDate(m.deliver_at) }}.
-      </p>
-      <template v-else>
-        <v-btn v-if="parseLetter(m.content)" class="mt-2" size="small" prepend-icon="mdi-email-open-outline" @click="read(m)">
-          {{ m.user_id === me?.id ? 'Revoir ma lettre' : 'Lire la lettre' }}
-        </v-btn>
-        <p v-else style="white-space: pre-wrap">{{ m.content }}</p>
-        <div v-if="m.in_transit" class="text-caption">En route, arrivée {{ formatDate(m.deliver_at) }}</div>
-      </template>
-    </v-card>
-
-
-    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">{{ snackbarText }}</v-snackbar>
-  </v-card>
   </InfoMenu>
+  <RocketPanel v-if="rocketLetter" :letter="rocketLetter" :recipient="rocketLetter.recipient ?? ''" :cancelling="cancelling" @cancel="cancelLetter" @arrived="onArrived" />
+  <PlanetProfile v-if="selected" v-model="profileOpen" :planet="selected" :letters="messages" @write="writeSelected" @read="read" />
+  <LetterComposer v-if="selected" v-model="composerOpen" :recipient="selected" :channel-id="channelId" @sent="onSent" @failed="notify" />
+  <LetterViewer v-if="reading" v-model="readerOpen" :blocks="reading.blocks" :strokes="reading.strokes" :from="reading.from" :removable="canRemove" @remove="removeRocket" />
+  <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">{{ snackbarText }}</v-snackbar>
+  </div>
 </template>
 
 <style scoped>
@@ -91,7 +57,6 @@ const channelId = Number(useRoute().params.id)
 // La scène plein écran (app.vue) lit cet état partagé
 const { system, messages, selectedId: recipientId, profileOpen, clickedRocket, followedLetter, openedLetter } = useScene()
 const me = ref<UserMe | null>(null)
-const loading = ref(true)
 const snackbar = ref(false)
 const snackbarText = ref('')
 const snackbarColor = ref('red')
@@ -102,13 +67,6 @@ const reading = ref<{ blocks: LetterBlock[], strokes: Stroke[], from: string, le
 
 const selected = computed(() => system.value?.planets.find((p) => p.id === recipientId.value) ?? null)
 
-// Avec une planète sélectionnée : seulement les lettres échangées avec elle
-const shown = computed(() =>
-  selected.value
-    ? messages.value.filter((m) => m.user_id === selected.value!.id || m.recipient_id === selected.value!.id)
-    : messages.value,
-)
-
 const notify = (text: string, color = 'red') => {
   snackbarText.value = text
   snackbarColor.value = color
@@ -117,14 +75,7 @@ const notify = (text: string, color = 'red') => {
 
 const formatDate = (iso: string) => (iso ? new Date(iso).toLocaleString() : '')
 
-const formatDelay = (seconds: number) => {
-  if (seconds < 60) return `${Math.round(seconds)} s`
-  if (seconds < 3600) return `${Math.round(seconds / 60)} min`
-  return `${(seconds / 3600).toFixed(1)} h`
-}
-
 const load = async () => {
-  loading.value = true
   try {
     ;[me.value, system.value, messages.value] = await Promise.all([
       me.value ?? api.getMe(),
@@ -133,8 +84,6 @@ const load = async () => {
     ])
   } catch (error) {
     notify(apiErrorMessage(error))
-  } finally {
-    loading.value = false
   }
 }
 

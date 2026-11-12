@@ -45,6 +45,7 @@ const props = defineProps<{
   followedLetter: string | null
   openedLetter: string | null
   customizing: { id: number; look: PlanetLook; texture: string | null } | null
+  focusArea: { top: number; bottom: number } | null
   overview: boolean
 }>()
 const emit = defineEmits<{ select: [id: number]; open: [channel: Channel]; center: []; read: [key: string]; rocket: [key: string | null] }>()
@@ -61,6 +62,8 @@ const tweaks = {
   rocketSize: 0.4,
   smokeSize: 0.04,
   landing: 0.2,
+  hearing: 8,
+  music: MUSIC_VOLUME,
   haloWidth: 0.28,
   haloColor: '#bfe6ff',
   haloOpacity: 0.35,
@@ -118,7 +121,7 @@ const cameraViews: Record<'overview' | 'channel' | 'planet' | 'rocket' | 'custom
   channel: { distance: 24, fixedAngle: false, elevation: 66, azimuth: 0 },
   planet: { distance: 5, fixedAngle: false, elevation: 30, azimuth: 0 },
   rocket: { distance: 2.6, fixedAngle: false, elevation: 30, azimuth: 0 },
-  customize: { distance: 7, fixedAngle: true, elevation: 20, azimuth: 0 },
+  customize: { distance: 7, fixedAngle: true, elevation: 5, azimuth: 0 },
 }
 if (debug) {
   try {
@@ -436,6 +439,25 @@ const makeLabel = (text: string, big = false) => {
   return new CSS2DObject(el)
 }
 
+// Nom de la planète, pseudo en dessous
+const setPlanetLabel = (el: HTMLElement, p: Planet) => {
+  const username = p.me ? `${p.username} (moi)` : p.username
+  const name = p.planet_name?.trim()
+  el.classList.toggle('planet-label--me', p.me)
+  if (el.dataset.name === name && el.dataset.username === username) return
+  el.dataset.name = name ?? ''
+  el.dataset.username = username
+  const title = document.createElement('span')
+  title.className = 'planet-label__name'
+  title.textContent = name || username
+  el.replaceChildren(title)
+  if (!name) return
+  const sub = document.createElement('span')
+  sub.className = 'planet-label__username'
+  sub.textContent = username
+  el.append(sub)
+}
+
 const BASE_SIZE = 0.55
 
 const lookFor = (p: Planet) => {
@@ -582,6 +604,40 @@ const spinAt = (now: number) => now * SPIN_SPEED
 
 const progressOf = (start: number, end: number, now: number) =>
   Math.min(1, Math.max(0, (now - start) / Math.max(1, end - start)))
+
+// Sons des fusées : décollage, vol, atterrissage (fini au moment du contact), plus forts quand la caméra est proche
+const sound = useSound()
+const TAKEOFF_MS = 5500
+const LANDING_MS = 6000
+const rocketPhases = new Map<string, string>()
+const rocketVoices = new Map<string, { setVolume: (volume: number) => void }>()
+
+const rocketSounds = (now: number) => {
+  let flight = 0
+  const seen = new Set<string>()
+  for (const dot of letters.children) {
+    const { key, start, end } = dot.userData
+    const phase = now >= end ? 'landed' : end - now <= LANDING_MS ? 'landing' : now - start < TAKEOFF_MS ? 'takeoff' : 'flight'
+    const near = clamp01(1 - camera.position.distanceTo(dot.position) / tweaks.hearing)
+    if (phase !== rocketPhases.get(key)) {
+      rocketVoices.delete(key)
+      if (phase === 'takeoff') rocketVoices.set(key, sound.play('decollage', near, (now - start) / 1000))
+      if (phase === 'landing') rocketVoices.set(key, sound.play('atterrissage', near, (now - end + LANDING_MS) / 1000))
+    }
+    rocketVoices.get(key)?.setVolume(near)
+    if (phase === 'flight') flight = Math.max(flight, near)
+    rocketPhases.set(key, phase)
+    seen.add(key)
+  }
+  for (const key of rocketPhases.keys()) {
+    if (seen.has(key)) continue
+    rocketPhases.delete(key)
+    rocketVoices.get(key)?.setVolume(0)
+    rocketVoices.delete(key)
+  }
+  if (flight > 0) sound.loop('fusee', flight)
+  else sound.stop('fusee')
+}
 
 // Mise en page : place fixe par id, les proches viennent à côté de moi
 const besideMe = (mine: { radius: number; angle: number }, distance: number, side: number, id: number) => {
@@ -789,13 +845,15 @@ const syncPlanet = (
     mesh.rotation.order = 'ZYX'
     applyLook(mesh, lookFor(p))
     mesh.position.copy(from ?? t.pos.clone().applyAxisAngle(UP, spinAt(Date.now())).add(center))
-    const label = makeLabel(p.me ? `${p.username} (moi)` : p.username)
-    label.position.set(0, 1.4, 0)
+    const label = makeLabel('')
+    label.center.set(0.5, 1)
+    label.position.set(0, 1.1, 0)
     mesh.add(label)
     scene.add(mesh)
     node = { mesh, label, key, center: center.clone(), target: t.pos.clone(), me: p.me }
     planets.set(k, node)
   }
+  setPlanetLabel(node.label.element, p)
   node.target.copy(t.pos)
   const points = new THREE.Path().absarc(0, 0, t.radius, 0, Math.PI * 2).getSpacedPoints(128)
   const ring = new Line2(new LineGeometry().setPositions(points.flatMap((v) => [v.x, v.y, 0])), orbitMaterial)
@@ -858,8 +916,33 @@ const channelDistance = () => cameraViews.channel.distance / Math.min(1, camera.
 const overviewDistance = () => Math.max(cameraViews.overview.distance, overviewFit)
 
 // Caméra : suit la sélection, le soleil du salon ouvert ou l'ensemble des salons
+// Personnalisation : on tourne autour de sa planète, sans zoom ni déplacement
+const lockControls = () => {
+  controls.enableZoom = !props.customizing
+  controls.enablePan = !props.customizing
+}
+
+// Personnalisation : la plus grande planète possible remplit une part de l'espace libre entre les panneaux
+const CUSTOMIZE_FILL = 0.6
+const customizeDistance = (node: PlanetNode) => {
+  const area = props.focusArea
+  const h = container.value?.clientHeight ?? 0
+  if (!area || !h) return cameraViews.customize.distance
+  const largest = (node.mesh.geometry as THREE.SphereGeometry).parameters.radius / BASE_SIZE
+  const free = Math.max(area.bottom - area.top, 1)
+  return (largest * h) / (CUSTOMIZE_FILL * free * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)))
+}
+
+let lastCustomized: THREE.Vector3 | null = null
+
 const followSelection = (selected?: PlanetNode, rocket?: THREE.Object3D, customized?: PlanetNode) => {
   const wanted = customized ? customized.mesh.position : rocket ? rocket.position : selected ? selected.mesh.position : props.overview ? overviewCenter : activeCenter
+  if (customized && lastCustomized) {
+    const step = wanted.clone().sub(lastCustomized)
+    controls.target.add(step)
+    camera.position.add(step)
+  }
+  lastCustomized = customized ? wanted.clone() : null
   const before = controls.target.clone()
   controls.target.lerp(wanted, 0.04)
   camera.position.add(controls.target.clone().sub(before))
@@ -867,31 +950,61 @@ const followSelection = (selected?: PlanetNode, rocket?: THREE.Object3D, customi
   if (adjustingZoom) {
     const offset = camera.position.clone().sub(controls.target)
     const view = customized ? cameraViews.customize : rocket ? cameraViews.rocket : selected ? cameraViews.planet : props.overview ? cameraViews.overview : cameraViews.channel
-    const goal = customized || rocket || selected ? view.distance : props.overview ? overviewDistance() : channelDistance()
+    const goal = customized ? customizeDistance(customized) : rocket || selected ? view.distance : props.overview ? overviewDistance() : channelDistance()
     const wantedDir = view.fixedAngle ? viewDirection(view) : null
     const next = THREE.MathUtils.lerp(offset.length(), goal, 0.05)
     const dir = offset.normalize()
     if (wantedDir) dir.lerp(wantedDir, 0.05).normalize()
     camera.position.copy(controls.target).add(dir.multiplyScalar(next))
     if (Math.abs(next - goal) < 0.05 && (!wantedDir || dir.angleTo(wantedDir) < 0.01)) adjustingZoom = false
+  } else if (customized) {
+    const offset = camera.position.clone().sub(controls.target)
+    offset.setLength(THREE.MathUtils.lerp(offset.length(), customizeDistance(customized), 0.05))
+    camera.position.copy(controls.target).add(offset)
   }
   const farthest = Math.max(MAX_DISTANCE, channelDistance() * 1.2)
   controls.maxDistance = props.overview || adjustingZoom ? Math.max(farthest, overviewDistance() * 1.2) : farthest
 }
 
-// Mobile : la planète ou la fusée suivie remonte dans l'écran pour laisser la place au panneau du bas
+// Mobile : la planète ou la fusée suivie remonte pour laisser la place au panneau du bas
+// Personnalisation : la planète se centre dans l'espace libre entre les panneaux
 const MOBILE_WIDTH = 600
 const MOBILE_LIFT = 0.22
 let viewLift = 0
 
-const liftView = (focused: boolean) => {
+const liftView = (focused: boolean, customizing: boolean) => {
   const el = container.value
   if (!el) return
-  const goal = focused && el.clientWidth < MOBILE_WIDTH ? MOBILE_LIFT : 0
-  viewLift = Math.abs(goal - viewLift) < 0.001 ? goal : THREE.MathUtils.lerp(viewLift, goal, 0.06)
   const { clientWidth: w, clientHeight: h } = el
+  const area = customizing ? props.focusArea : null
+  const goal = area ? 0.5 - (area.top + area.bottom) / 2 / h : focused && w < MOBILE_WIDTH ? MOBILE_LIFT : 0
+  viewLift = Math.abs(goal - viewLift) < 0.001 ? goal : THREE.MathUtils.lerp(viewLift, goal, 0.06)
   if (viewLift) camera.setViewOffset(w, h, 0, viewLift * h, w, h)
   else camera.clearViewOffset()
+}
+
+// Étiquettes cachées par un objet 3D plus proche
+const occlusion = new THREE.Raycaster()
+const labelAt = new THREE.Vector3()
+
+const isOwnedBy = (object: THREE.Object3D, owner: THREE.Object3D) => {
+  for (let o: THREE.Object3D | null = object; o; o = o.parent) if (o === owner) return true
+  return false
+}
+
+const hideCoveredLabels = () => {
+  const visible = [...planets.values()].filter((n) => n.label.visible)
+  if (!visible.length) return
+  const sun = suns.get(activeKey)?.children[0]
+  const blockers = [...visible.map((n) => n.mesh), ...letters.children, ...(sun ? [sun] : [])]
+  for (const node of visible) {
+    node.label.getWorldPosition(labelAt)
+    const distance = labelAt.distanceTo(camera.position)
+    occlusion.set(camera.position, labelAt.sub(camera.position).normalize())
+    occlusion.far = distance - 0.05
+    const covered = occlusion.intersectObjects(blockers, true).some((hit) => hit.object instanceof THREE.Mesh && !isOwnedBy(hit.object, node.mesh))
+    node.label.element.classList.toggle('planet-label--covered', covered)
+  }
 }
 
 // Boucle d'animation
@@ -917,6 +1030,7 @@ const animate = () => {
       puff(dot, now)
     }
   }
+  rocketSounds(now)
   ;(smoke.material as THREE.PointsMaterial).size = tweaks.smokeSize
   animateSmoke(now)
   const selected = props.selectedId != null ? planets.get(`${activeKey}:${props.selectedId}`) : undefined
@@ -939,8 +1053,9 @@ const animate = () => {
   const rocket = followedRocket()
   if (followedKey && !rocket) stopFollowing()
   followSelection(selected, rocket, customizedNode())
-  liftView(!!(selected || rocket))
+  liftView(!!(selected || rocket || customizedNode()), !!customizedNode())
   controls.update()
+  hideCoveredLabels()
   stars.position.copy(camera.position)
   shootingStars.position.copy(camera.position)
   animateShootingStars(now)
@@ -1139,6 +1254,7 @@ onMounted(() => {
   controls.maxDistance = MAX_DISTANCE
   controls.addEventListener('start', () => { adjustingZoom = false })
   controls.maxPolarAngle = Math.PI * 0.49
+  lockControls()
 
   stars = makeStars()
   scene.add(stars, shootingStars, new THREE.AmbientLight(0xffffff, 1.5), orbits, letters, smoke, selectionHalo, hoverRing)
@@ -1189,6 +1305,11 @@ onMounted(() => {
     rocketsFolder.addBinding(tweaks, 'rocketSize', { label: 'Taille', min: 0.2, max: 2, step: 0.05 })
     rocketsFolder.addBinding(tweaks, 'smokeSize', { label: 'Fumée', min: 0.02, max: 0.4, step: 0.01 })
     rocketsFolder.addBinding(tweaks, 'landing', { label: 'Atterrissage', min: 0.05, max: 0.6, step: 0.01 })
+    rocketsFolder.addBinding(tweaks, 'hearing', { label: 'Portée du son', min: 1, max: 30, step: 0.5 })
+
+    const soundsFolder = pane.addFolder({ title: 'Sons', expanded: false })
+    soundsFolder.addBinding(tweaks, 'music', { label: 'Musique', min: 0, max: 1, step: 0.01 })
+      .on('change', () => sound.setMusicVolume(tweaks.music))
 
     const haloFolder = pane.addFolder({ title: 'Halo de sélection', expanded: false })
     haloFolder.addBinding(tweaks, 'haloWidth', { label: 'Épaisseur', min: 0.04, max: 0.28, step: 0.01 })
@@ -1241,6 +1362,7 @@ watch(() => props.customizing, previewLook, { deep: true })
 watch(() => props.decor, previewLook)
 watch(() => props.customizing?.id, () => {
   adjustingZoom = true
+  if (controls) lockControls()
   setHovered(undefined)
 })
 watch(() => props.overview, () => {
@@ -1251,6 +1373,7 @@ watch(() => props.overview, () => {
 
 onBeforeUnmount(() => {
   ready = false
+  sound.stop('fusee')
   pane?.dispose()
   cancelAnimationFrame(frame)
   observer?.disconnect()
@@ -1272,17 +1395,35 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 .scene :deep(.planet-label) {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   color: #fff;
-  font: 600 12px/1 monospace;
+  font: 600 16px/1 var(--font-family);
   text-shadow: 1px 1px 0 #000;
   white-space: nowrap;
 }
+.scene :deep(.planet-label:not(.planet-label--sun)) {
+  transition: opacity 0.15s;
+}
+.scene :deep(.planet-label--covered) {
+  opacity: 0;
+}
+.scene :deep(.planet-label__username) {
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.85;
+}
 .scene :deep(.planet-label--sun) {
-  font-size: 16px;
+  font-size: 20px;
   transition: font-size 0.15s, color 0.15s;
 }
 .scene :deep(.planet-label--hover) {
-  font-size: 20px;
+  font-size: 24px;
+  color: #ffd54f;
+}
+.scene :deep(.planet-label--me) {
   color: #ffd54f;
 }
 .scene--overview :deep(.planet-label--sun) {

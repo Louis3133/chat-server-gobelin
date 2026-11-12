@@ -16,6 +16,7 @@
 
   --btn-stroke: linear-gradient(to top, #737373, #ffffff);
   --btn-fill: linear-gradient(to top, #232323 35%, #4d4d4d 75%);
+  --btn-fill-hover: linear-gradient(to top, #303030 35%, #636363 75%);
 }
 
 body {
@@ -83,6 +84,21 @@ body {
   text-align: center;
   text-transform: none;
   cursor: pointer;
+}
+
+@media (hover: hover) {
+  .pixel-btn:not(:disabled):hover,
+  .v-btn.v-btn:not(.v-tab):not(.v-btn--disabled):hover {
+    background: var(--btn-fill-hover) !important;
+  }
+}
+
+/* Icônes pixel (public/icons) */
+.pixel-icon {
+  display: block;
+  flex: none;
+  width: 24px;
+  height: 24px;
 }
 
 /* Défilement */

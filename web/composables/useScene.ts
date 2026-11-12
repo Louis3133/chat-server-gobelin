@@ -15,6 +15,8 @@ export const useScene = () => ({
   openedLetter: useState<string | null>('scene-opened-letter', () => null),
   // texture : URL de l'image (importée ou en aperçu), null pour la roche par défaut
   customizing: useState<{ id: number; look: PlanetLook; texture: string | null } | null>('scene-customizing', () => null),
+  // Espace libre entre les panneaux de la personnalisation (px depuis le haut de l'écran) : la planète s'y centre
+  focusArea: useState<{ top: number; bottom: number } | null>('scene-focus-area', () => null),
 })
 
 // Identifie la fusée d'une lettre, côté scène comme côté pages
@@ -26,6 +28,7 @@ export const buildDecor = (users: PublicUser[]): SolarSystem => ({
   planets: users.filter((u) => u.username !== 'internal-clock').map((u) => ({
     id: u.id,
     username: u.username,
+    planet_name: u.planet_name,
     me: false,
     distance: null,
     delay_seconds: null,

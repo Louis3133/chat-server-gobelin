@@ -1,5 +1,5 @@
 <template>
-  <v-dialog class="dialog-letter" v-model="open" :fullscreen="xs">
+  <v-dialog class="dialog-letter" v-model="open" fullscreen>
     <div class="dialog-wrapper">
     <div @click.self="selectedId = null" class="dialog-content">
       <div class="letter-header">
@@ -292,7 +292,8 @@
 
 .dialog-wrapper {
   position: relative;
-  margin-inline: auto;
+  width: 100%;
+  height: 100%;
 }
 
 .letter-actions {
@@ -303,28 +304,14 @@
 }
 
 .dialog-content {
-  height: 90vh;
-  width: 90vw;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  margin-inline: auto;
   overflow-y: scroll;
   padding: 32px;
   background: rgba(0, 0, 0, .8);
-}
-
-@media (max-width: 599px) {
-  .dialog-wrapper {
-    width: 100%;
-    height: 100%;
-  }
-
-  .dialog-content {
-    width: 100%;
-    height: 100%;
-    clip-path: none;
-  }
-
+  clip-path: none;
 }
 
 .letter-content.adding-text {
@@ -709,7 +696,6 @@ const props = defineProps<{
 }>()
 
 const open = defineModel<boolean>({ default: false })
-const { xs } = useDisplay()
 const emit = defineEmits<{ sent: [message: Message], failed: [error: string] }>()
 
 
