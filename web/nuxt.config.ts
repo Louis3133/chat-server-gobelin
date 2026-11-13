@@ -7,8 +7,17 @@ export default defineNuxtConfig({
   modules: ['vuetify-nuxt-module'],
   runtimeConfig: {
     public: {
-      // Surchargeable avec NUXT_PUBLIC_API_BASE
-      apiBase: 'http://localhost:4000',
+      // API partagée de l'atelier (NUXT_PUBLIC_API_BASE), données d'Epistellaire sous NUXT_PUBLIC_API_NAMESPACE
+      apiBase: 'https://gobelins-chat-api.leomouraire.com:4000',
+      apiNamespace: 'epistellaire',
+      adminUsernames: '',
+      // Règles des lettres (NUXT_PUBLIC_LETTER_*)
+      letterMinDistance: 1,
+      letterMaxDistance: 10,
+      letterMinDelay: '1m',
+      letterMaxDelay: '1m',
+      letterApproach: 0,
+      letterTimeScale: 1,
     },
   },
 })

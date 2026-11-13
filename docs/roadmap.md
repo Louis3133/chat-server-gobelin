@@ -4,7 +4,7 @@ Une étape = une session de travail courte. Cocher quand c'est terminé. Lire `d
 
 ## 0. Hygiène du dépôt
 - [x] Ignorer `web/node_modules` et les dossiers générés (`web/.gitignore`)
-- [ ] Retirer le binaire `api/api` de l'index et l'ajouter à `api/.gitignore`
+- [x] Retirer le binaire `api/api` de l'index (dossier `api/` supprimé)
 - [ ] Retirer le JWT de `memory_help.txt`
 - [ ] Commit de nettoyage séparé du reste
 - [ ] Formater le Go (`gofmt`) sur les fichiers modifiés
@@ -66,6 +66,16 @@ Une étape = une session de travail courte. Cocher quand c'est terminé. Lire `d
 - [x] Le destinataire clique sur une fusée posée : le nez s'ouvre et la lettre s'affiche
 - [x] Retirer la fusée de sa planète (« pouf »), la lettre reste (migration 00008, `DELETE /channel/message/rocket`)
 - [ ] Essai dans le navigateur (ouverture du nez, pouf) : seuls `nuxt build` et l'API (Postgres jetable) ont été vérifiés
+
+## 5 quater. API partagée de l'atelier
+- [x] `useChatApi` reconstruit sur le serveur commun (métadonnées du namespace `epistellaire`), même interface pour les pages
+- [x] Règles des lettres, distances et visibilité portées côté front (`utils/letterRules.ts`, `utils/sharedApi.ts`)
+- [x] Essai de bout en bout contre une copie locale du serveur de la prof (18 scénarios, pages sans erreur)
+- [x] Variable Vercel `NUXT_PUBLIC_API_BASE`
+- [x] Variable Vercel `NUXT_PUBLIC_ADMIN_USERNAMES`
+- [x] Retirer `api/`, `db/` et leurs services de `docker-compose.yml`
+- [ ] Arrêter Render et Neon
+- [ ] Temps réel avec le WebSocket de l'API partagée (`/channel/socket`)
 
 ## 6. Finitions
 - [ ] Temps réel (polling puis WebSocket si besoin)
