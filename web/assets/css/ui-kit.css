@@ -105,6 +105,10 @@ body {
   cursor: default;
 }
 
+.v-btn.v-btn--disabled:not(.v-tab) > .v-btn__overlay {
+  opacity: 0;
+}
+
 /* Onglets : coins de 3 pixels en haut à gauche et en bas à droite */
 .pixel-tab {
   --u: var(--stroke-width);
