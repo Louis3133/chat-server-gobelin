@@ -65,7 +65,7 @@ const onPress = (event: PointerEvent) => {
   sound.unlock()
   const target = event.target as Element | null
   if (target?.closest?.('button:disabled, .v-btn--disabled, [aria-disabled="true"]')) sound.play('disabled')
-  else if (target?.closest?.('button, .v-btn, .pixel-btn, .swatch-btn')) sound.play('click')
+  else if (target?.closest?.('button, .v-btn, .pixel-btn, .swatch-btn')) sound.play('click', 0.25)
 }
 const onKey = () => sound.unlock()
 onMounted(() => {
