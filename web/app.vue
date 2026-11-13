@@ -59,11 +59,13 @@ const openChannel = async (channel: Channel) => {
   await navigateTo(`/channels/${channel.id}`)
 }
 
-// Sons : musique dès l'arrivée, débloqués au premier geste ; un clic sur un bouton désactivé a son propre son
+// Sons : musique dès l'arrivée, débloqués au premier geste ; clic sur un bouton, son à part s'il est désactivé
 const sound = useSound()
 const onPress = (event: PointerEvent) => {
   sound.unlock()
-  if ((event.target as Element | null)?.closest?.('button:disabled, .v-btn--disabled, [aria-disabled="true"]')) sound.play('disabled')
+  const target = event.target as Element | null
+  if (target?.closest?.('button:disabled, .v-btn--disabled, [aria-disabled="true"]')) sound.play('disabled')
+  else if (target?.closest?.('button, .v-btn, .pixel-btn, .swatch-btn')) sound.play('click')
 }
 const onKey = () => sound.unlock()
 onMounted(() => {
