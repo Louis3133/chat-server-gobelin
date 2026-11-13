@@ -17,7 +17,7 @@
       </label>
       <label class="planet-settings__row planet-settings__row--bio">
         <img class="pixel-icon" src="/icons/actions/bio.svg" alt="Bio">
-        <textarea v-model="draft.bio" class="planet-settings__field text-body pixel-scroll" placeholder="Ta bio" maxlength="500" rows="6" :readonly="saving" />
+        <textarea v-model="draft.bio" class="planet-settings__field text-body pixel-scroll" placeholder="Ta bio" maxlength="500" :rows="xs ? 3 : 6" :readonly="saving" />
       </label>
       <NuxtLink class="pixel-btn planet-settings__customize" to="/planet">Personnaliser ma planète</NuxtLink>
     </form>
@@ -84,6 +84,7 @@
 const props = defineProps<{ planet: Planet, letters: Message[] }>()
 const emit = defineEmits<{ write: [], read: [letter: Message], failed: [message: string] }>()
 const api = useChatApi()
+const { xs } = useDisplay()
 
 const open = defineModel<boolean>({ default: false })
 const expanded = ref(false)
@@ -398,6 +399,10 @@ const status = (m: Message) => {
   .planet-profile {
     overflow-y: auto;
     overscroll-behavior: contain;
+  }
+
+  .planet-settings {
+    gap: var(--space-2);
   }
 
   .planet-profile__more {
