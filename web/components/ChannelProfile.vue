@@ -201,11 +201,6 @@ const save = async () => {
   padding: var(--space-1) var(--space-2);
 }
 
-.channel-profile__edit-actions .pixel-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .channel-profile__more {
   display: flex;
   flex: 0 1 auto;
@@ -279,5 +274,20 @@ const save = async () => {
 
 .channel-profile__link:hover {
   color: #d3fbb2;
+}
+
+@media (max-width: 599px) {
+  .channel-profile {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .channel-profile__more {
+    flex: none;
+  }
+
+  .channel-profile__planets {
+    overflow-y: visible;
+  }
 }
 </style>

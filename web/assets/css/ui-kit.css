@@ -18,6 +18,8 @@
   --btn-fill: linear-gradient(to top, #232323 35%, #4d4d4d 75%);
   --btn-fill-hover: linear-gradient(to top, #303030 35%, #636363 75%);
   --Zib: radial-gradient(50% 50% at 50% 50%, #d3fbb2 43.75%, #7d956a 100%);
+  --Kenny: linear-gradient(180deg, rgba(255, 255, 255, 0.30) 26.44%, rgba(115, 115, 115, 0.30) 64.42%);
+  --King: linear-gradient(180deg, #A0A0A0 0%, #3F3F3F 100%);
 }
 
 body {
@@ -92,6 +94,15 @@ body {
   .v-btn.v-btn:not(.v-tab):not(.v-btn--disabled):hover {
     background: var(--btn-fill-hover) !important;
   }
+}
+
+/* Boutons désactivés */
+.pixel-btn:disabled,
+.v-btn.v-btn--disabled:not(.v-tab) {
+  border-image: var(--King) 1 / 1px;
+  background: var(--Kenny) !important;
+  opacity: 1;
+  cursor: default;
 }
 
 /* Onglets : coins de 3 pixels en haut à gauche et en bas à droite */

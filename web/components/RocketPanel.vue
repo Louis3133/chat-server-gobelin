@@ -22,7 +22,7 @@ const timer = setInterval(() => { now.value = Date.now() }, 1000)
 onBeforeUnmount(() => clearInterval(timer))
 
 const remaining = computed(() => Math.max(0, Math.ceil((new Date(props.letter.deliver_at).getTime() - now.value) / 1000)))
-watch(remaining, (seconds) => { if (seconds <= 0) emit('arrived') })
+watch(remaining, (seconds) => { if (seconds <= 0) emit('arrived') }, { immediate: true })
 
 const formatRemaining = (seconds: number) => {
   const h = Math.floor(seconds / 3600)
