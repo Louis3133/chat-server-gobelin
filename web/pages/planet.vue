@@ -149,7 +149,7 @@ const STEPS = [
 const step = ref(1)
 
 // Nom : obligatoire, lettres, chiffres et espaces
-const NAME_MAX = 16
+const NAME_MAX = 22
 const nameAllowed = computed(() => /^[\p{L}\p{N} ]*$/u.test(profile.value.planet_name))
 const nameTooLong = computed(() => profile.value.planet_name.length > NAME_MAX)
 const nameValid = computed(() => nameAllowed.value && profile.value.planet_name.trim().length > 0 && !nameTooLong.value)
@@ -579,11 +579,6 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   padding: var(--space-2);
   font-size: var(--subtitle-size);
-}
-
-.actions button:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 @media (min-width: 600px) {
