@@ -5,9 +5,9 @@
         <h2 class="text-heading">Lettre pour {{ recipient }}</h2>
         <p class="text-subtitle-medium">{{ remaining > 0 ? `Arrivée dans ${formatRemaining(remaining)}` : 'Arrivée imminente' }}</p>
       </div>
-      <v-btn :loading="cancelling" :disabled="remaining <= 0" @click="emit('cancel')">
-        <template #prepend><img class="pixel-icon" src="/icons/actions/close.svg" alt=""></template>
+      <v-btn class="rocket-panel__cancel" :loading="cancelling" :disabled="remaining <= 0" @click="emit('cancel')">
         Annuler la lettre
+        <template #append><img class="pixel-icon" src="/icons/actions/close.svg" alt=""></template>
       </v-btn>
     </div>
   </Teleport>
@@ -46,6 +46,13 @@ const formatRemaining = (seconds: number) => {
 .rocket-panel h2,
 .rocket-panel p {
   margin: 0;
+}
+
+.rocket-panel .v-btn.rocket-panel__cancel {
+  align-self: stretch;
+  width: 100% !important;
+  padding: var(--space-2);
+  font-size: var(--subtitle-size);
 }
 
 .rocket-panel > div {
