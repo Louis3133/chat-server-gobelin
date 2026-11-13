@@ -5,6 +5,7 @@ const SOUNDS = {
   atterrissage: '/sounds/atterrissage.mp3',
   zibzib: '/sounds/zibzib.mp3',
   disabled: '/sounds/disabled.mp3',
+  delete: '/sounds/delete.mp3',
 } as const
 
 export type SoundName = keyof typeof SOUNDS

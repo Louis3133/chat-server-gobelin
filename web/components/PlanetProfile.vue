@@ -1,6 +1,28 @@
 <template>
   <Teleport to="body">
-    <div v-if="open" ref="panel" class="planet-profile scene-panel pixel-frame">
+    <form v-if="open && settings" class="planet-profile planet-settings scene-panel pixel-frame" @submit.prevent="save">
+      <div class="planet-settings__header">
+        <h2 class="text-heading">{{ planet.username }}</h2>
+        <button class="pixel-btn planet-settings__validate" type="submit" :disabled="saving" title="Enregistrer" aria-label="Enregistrer">
+          <img class="pixel-icon" src="/icons/actions/validate.svg" alt="">
+        </button>
+      </div>
+      <label class="planet-settings__row">
+        <img class="pixel-icon" src="/icons/actions/earth.svg" alt="Nom de la planète">
+        <input v-model="draft.planet_name" class="planet-settings__field text-body" placeholder="Nom de ta planète" maxlength="40" :readonly="saving" autocomplete="off">
+      </label>
+      <label class="planet-settings__row">
+        <img class="pixel-icon" src="/icons/actions/pronoms.svg" alt="Pronoms">
+        <input v-model="draft.pronouns" class="planet-settings__field text-body" placeholder="Tes pronoms" maxlength="30" :readonly="saving" autocomplete="off">
+      </label>
+      <label class="planet-settings__row planet-settings__row--bio">
+        <img class="pixel-icon" src="/icons/actions/bio.svg" alt="Bio">
+        <textarea v-model="draft.bio" class="planet-settings__field text-body pixel-scroll" placeholder="Ta bio" maxlength="500" rows="6" :readonly="saving" />
+      </label>
+      <NuxtLink class="pixel-btn planet-settings__customize" to="/planet">Personnaliser ma planète</NuxtLink>
+    </form>
+
+    <div v-else-if="open" ref="panel" class="planet-profile scene-panel pixel-frame">
       <h2 class="planet-profile__title text-heading">
         {{ planet.planet_name || `Planète de ${planet.username}` }}
         <img class="pixel-icon" src="/icons/actions/earth.svg" alt="">
@@ -21,7 +43,14 @@
         </li>
       </ul>
 
-      <div v-if="!planet.me" class="planet-profile__ctas">
+      <div v-if="planet.me" class="planet-profile__ctas">
+        <button class="pixel-btn planet-profile__write" type="button" @click="openSettings">
+          Mes réglages
+          <img class="pixel-icon" src="/icons/actions/tools.svg" alt="">
+        </button>
+      </div>
+
+      <div v-else class="planet-profile__ctas">
         <button class="pixel-btn planet-profile__write" type="button" @click="emit('write')">
           Envoyer une lettre
           <img class="pixel-icon" src="/icons/actions/send.svg" alt="">
@@ -53,21 +82,51 @@
 
 <script setup lang="ts">
 const props = defineProps<{ planet: Planet, letters: Message[] }>()
-const emit = defineEmits<{ write: [], read: [letter: Message] }>()
+const emit = defineEmits<{ write: [], read: [letter: Message], failed: [message: string] }>()
+const api = useChatApi()
 
 const open = defineModel<boolean>({ default: false })
 const expanded = ref(false)
 const shown = ref(false)
 const panel = ref<HTMLElement>()
 const more = ref<HTMLElement>()
-const { system } = useScene()
+const { system, decor } = useScene()
 let resize: Animation | undefined
 
 watch(open, (value) => {
   if (value) return
   resize?.cancel()
-  expanded.value = shown.value = false
+  expanded.value = shown.value = settings.value = false
 })
+
+// Réglages de sa propre planète : nom, pronoms et bio modifiables
+const settings = ref(false)
+const saving = ref(false)
+const draft = reactive<Profile>({ planet_name: '', pronouns: '', bio: '' })
+
+const openSettings = () => {
+  draft.planet_name = props.planet.planet_name ?? ''
+  draft.pronouns = props.planet.pronouns ?? ''
+  draft.bio = props.planet.bio ?? ''
+  settings.value = true
+}
+
+const save = async () => {
+  saving.value = true
+  try {
+    const user = await api.updateProfile({ ...draft })
+    const profile = { planet_name: user.planet_name ?? '', pronouns: user.pronouns ?? '', bio: user.bio ?? '' }
+    for (const sys of [system, decor]) {
+      if (!sys.value) continue
+      sys.value = { ...sys.value, planets: sys.value.planets.map((p) => (p.id === props.planet.id ? { ...p, ...profile } : p)) }
+    }
+    settings.value = false
+  } catch (error) {
+    emit('failed', apiErrorMessage(error))
+  } finally {
+    saving.value = false
+  }
+}
 
 // Ouverture et fermeture animées de « Plus d'infos »
 const heightWith = async (value: boolean) => {
@@ -268,5 +327,74 @@ const status = (m: Message) => {
 
 .letter-item__date {
   opacity: 0.8;
+}
+
+.planet-settings {
+  gap: var(--space-3);
+}
+
+.planet-settings__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.planet-settings__header h2 {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.planet-settings__validate {
+  flex: none;
+  padding: var(--space-1);
+}
+
+.planet-settings__validate:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.planet-settings__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.planet-settings__row--bio {
+  align-items: flex-start;
+}
+
+.planet-settings__row .pixel-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.planet-settings__field {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--color-text);
+  outline: none;
+  resize: none;
+}
+
+.planet-settings__field::placeholder {
+  color: var(--color-text);
+  opacity: 0.5;
+}
+
+.planet-settings__field:focus {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.planet-settings__customize {
+  justify-content: center;
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--subtitle-size);
+  text-decoration: none;
 }
 </style>

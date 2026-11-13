@@ -117,7 +117,7 @@ interface CameraView {
   azimuth: number
 }
 const cameraViews: Record<'overview' | 'channel' | 'planet' | 'rocket' | 'customize', CameraView> = {
-  overview: { distance: 24, fixedAngle: true, elevation: 66, azimuth: 0 },
+  overview: { distance: 24, fixedAngle: true, elevation: 20, azimuth: 0 },
   channel: { distance: 24, fixedAngle: false, elevation: 66, azimuth: 0 },
   planet: { distance: 5, fixedAngle: false, elevation: 30, azimuth: 0 },
   rocket: { distance: 2.6, fixedAngle: false, elevation: 30, azimuth: 0 },
