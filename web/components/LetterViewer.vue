@@ -3,6 +3,7 @@
     <div class="dialog-wrapper">
       <div class="dialog-content pixel-frame">
         <div class="letter-content">
+          <TapedImage v-for="image in images" :key="image.id" :image="image" />
           <canvas ref="canvas" class="drawing-layer" width="900" height="1200"></canvas>
           <div v-for="block in blocks" :key="block.id" :style="{ top: block.top + 'px', left: block.left + 'px', transform: `rotate(${block.rotation}deg)`, fontSize: block.fontSize + 'px', color: block.color }" class="letter-block">
             <p class="letter-text">{{ block.text }}</p>
@@ -97,6 +98,7 @@
 const props = defineProps<{
   blocks: LetterBlock[],
   strokes: Stroke[],
+  images: LetterImage[],
   from: string,
   removable?: boolean,
 }>()

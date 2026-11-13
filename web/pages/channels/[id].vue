@@ -23,9 +23,9 @@
   </InfoMenu>
   <RocketPanel v-if="rocketLetter" :letter="rocketLetter" :recipient="rocketLetter.recipient ?? ''" :cancelling="cancelling" @cancel="cancelLetter" @arrived="onArrived" />
   <ChannelProfile v-if="system" v-model="channelOpen" :channel="system.channel" :planets="system.planets" :editable="canEditChannel" @select="pickFromChannel" @saved="onChannelSaved" @failed="notify" />
-  <PlanetProfile v-if="selected" v-model="profileOpen" :planet="selected" :letters="messages" @write="writeSelected" @read="read" />
+  <PlanetProfile v-if="selected" v-model="profileOpen" :planet="selected" :letters="messages" @write="writeSelected" @read="read" @failed="notify" />
   <LetterComposer v-if="selected" v-model="composerOpen" :recipient="selected" :channel-id="channelId" @sent="onSent" @failed="notify" />
-  <LetterViewer v-if="reading" v-model="readerOpen" :blocks="reading.blocks" :strokes="reading.strokes" :from="reading.from" :removable="canRemove" @remove="removeRocket" />
+  <LetterViewer v-if="reading" v-model="readerOpen" :blocks="reading.blocks" :strokes="reading.strokes" :images="reading.images" :from="reading.from" :removable="canRemove" @remove="removeRocket" />
   <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">{{ snackbarText }}</v-snackbar>
   </div>
 </template>
@@ -64,7 +64,7 @@ const snackbarColor = ref('red')
 const composerOpen = ref(false)
 const searchOpen = ref(false)
 const readerOpen = ref(false)
-const reading = ref<{ blocks: LetterBlock[], strokes: Stroke[], from: string, letter: Message } | null>(null)
+const reading = ref<{ blocks: LetterBlock[], strokes: Stroke[], images: LetterImage[], from: string, letter: Message } | null>(null)
 
 const selected = computed(() => system.value?.planets.find((p) => p.id === recipientId.value) ?? null)
 
@@ -139,7 +139,7 @@ watch(recipientId, (id) => {
 
 const read = (m: Message) => {
   const letter = parseLetter(m.content)
-  reading.value = { blocks: letter?.blocks ?? [], strokes: letter?.strokes ?? [], from: m.user, letter: m }
+  reading.value = { blocks: letter?.blocks ?? [], strokes: letter?.strokes ?? [], images: letter?.images ?? [], from: m.user, letter: m }
   readerOpen.value = true
 }
 
@@ -166,6 +166,7 @@ watch(openedLetter, async (key) => {
 watch(readerOpen, (open) => { if (!open) openedLetter.value = null })
 
 // Fusée cliquée : son panneau seulement pour sa propre lettre encore en route
+const sound = useSound()
 const cancelling = ref(false)
 const rocketLetter = computed(() =>
   messages.value.find((m) => letterKey(m) === clickedRocket.value && m.user_id === me.value?.id && m.in_transit && !m.rocket_removed),
@@ -180,6 +181,7 @@ const cancelLetter = async () => {
     await api.cancelLetter(m.id)
     clickedRocket.value = null
     messages.value = messages.value.map((x) => (x.id === m.id ? { ...x, rocket_removed: true } : x))
+    sound.play('delete')
     notify('Lettre annulée', 'success')
     await load()
   } catch (error) {
@@ -207,6 +209,7 @@ const removeRocket = async () => {
     await api.removeRocket(m.id)
     readerOpen.value = false
     messages.value = messages.value.map((x) => (x.id === m.id ? { ...x, rocket_removed: true } : x))
+    sound.play('delete')
   } catch (error) {
     notify(apiErrorMessage(error))
   }

@@ -14,9 +14,20 @@ export type Stroke = {
   points: number[],
 }
 
+export type LetterImage = {
+  id: number,
+  top: number,
+  left: number,
+  width: number,
+  height: number,
+  rotation: number,
+  src: string,
+}
+
 export type Letter = {
   blocks: LetterBlock[],
   strokes: Stroke[],
+  images: LetterImage[],
 }
 
 export const LETTER_WIDTH = 900
@@ -28,11 +39,12 @@ export const LETTER_MAX_LENGTH = 100000
 const round = (value: number) => Math.round(value * 10) / 10
 
 // Format stocké dans messages.content
-export const serializeLetter = (blocks: LetterBlock[], strokes: Stroke[]) =>
+export const serializeLetter = (blocks: LetterBlock[], strokes: Stroke[], images: LetterImage[]) =>
   JSON.stringify({
     v: 1,
     blocks: blocks.map((b) => [round(b.top), round(b.left), round(b.rotation), round(b.fontSize), b.text, b.color]),
     strokes: strokes.map((s) => [s.color, round(s.width), simplifyPoints(s.points).map(Math.round)]),
+    images: images.map((i) => [round(i.top), round(i.left), round(i.width), round(i.height), i.src, round(i.rotation)]),
   })
 
 // Les points à moins de 3 px du précédent n'apportent rien au tracé
@@ -56,6 +68,8 @@ export const parseLetter = (content: string): Letter | null => {
       blocks: data.blocks.map(([top, left, rotation, fontSize, text, color = '#ffffff']: [number, number, number, number, string, string?], id: number) =>
         ({ id, top, left, rotation, fontSize, text, color })),
       strokes: (data.strokes ?? []).map(([color, width, points]: [string, number, number[]]) => ({ color, width, points })),
+      images: (data.images ?? []).map(([top, left, width, height, src, rotation = 0]: [number, number, number, number, string, number?], id: number) =>
+        ({ id, top, left, width, height, rotation, src })),
     }
   } catch {
     return null
