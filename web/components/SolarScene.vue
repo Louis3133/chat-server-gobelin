@@ -722,7 +722,7 @@ const makeSun = (name: string | null) => {
     const label = makeLabel(name, true)
     label.position.set(0, 3.5, 0)
     label.element.addEventListener('click', () => openSun(group))
-    label.element.addEventListener('mouseenter', () => { if (props.overview) setHovered(group) })
+    label.element.addEventListener('mouseenter', () => { if (sunPickable(group)) setHovered(group) })
     label.element.addEventListener('mouseleave', () => setHovered(undefined))
     group.userData.label = label.element
     group.add(label)
@@ -763,8 +763,13 @@ const planetAt = (event: MouseEvent) => {
   return active.find(([, n]) => n.mesh === hit?.object)?.[0] ?? null
 }
 
+// Vue d'ensemble : tous les soleils ; dans un salon : les autres salons au loin
+const sunPickable = (group: THREE.Object3D) => !props.customizing && (props.overview || group !== suns.get(activeKey))
+
 const openSun = (group: THREE.Object3D) => {
-  if (props.overview && !props.customizing && group.userData.channel) emit('open', group.userData.channel)
+  if (props.customizing) return
+  if (!props.overview && group === suns.get(activeKey)) return emit('sun')
+  if (group.userData.channel) emit('open', group.userData.channel)
 }
 
 const rayAt = (event: MouseEvent) => {
@@ -779,7 +784,7 @@ const rayAt = (event: MouseEvent) => {
 }
 
 const sunAt = (event: MouseEvent) => {
-  const hits = [...suns.values()].flatMap((g) => g.children.filter((o) => o.userData.sun))
+  const hits = [...suns.values()].filter(sunPickable).flatMap((g) => g.children.filter((o) => o.userData.sun))
   return rayAt(event).intersectObjects(hits, false)[0]?.object.userData.sun as THREE.Group | undefined
 }
 
@@ -804,6 +809,7 @@ const syncSystem = () => {
   const where = centers()
   activeKey = props.system ? keyOf(props.system.channel) : 'general'
   activeCenter.copy(where.get(activeKey)?.pos ?? ORIGIN)
+  if (hoveredSun && !sunPickable(hoveredSun)) setHovered(undefined)
   fitOverview([...where.values()].map((w) => w.pos))
   if (snapOverview) placeOverview()
 
@@ -1139,11 +1145,11 @@ const onPointerDown = (e: PointerEvent) => { downAt = { x: e.clientX, y: e.clien
 
 const onPointerMove = (event: PointerEvent) => {
   if (props.customizing) return
-  setHovered(props.overview ? sunAt(event) : undefined)
-  if (props.overview) return
+  if (props.overview) return setHovered(sunAt(event))
   const rocket = rocketAt(event)
   setHoveredPlanet(rocket ? null : planetAt(event))
-  renderer.domElement.style.cursor = hoveredPlanet || activeSunAt(event) || readable(rocket) ? 'pointer' : ''
+  setHovered(rocket || hoveredPlanet ? undefined : sunAt(event))
+  renderer.domElement.style.cursor = hoveredPlanet || hoveredSun || activeSunAt(event) || readable(rocket) ? 'pointer' : ''
 }
 
 const onClick = (event: MouseEvent) => {
@@ -1163,6 +1169,8 @@ const onClick = (event: MouseEvent) => {
   }
   const planet = planetAt(event)
   if (planet) return selectPlanet(planet)
+  const sun = sunAt(event)
+  if (sun) return openSun(sun)
   stopFollowing()
   if (activeSunAt(event)) emit('sun')
 }
@@ -1499,7 +1507,7 @@ onBeforeUnmount(() => {
 .scene :deep(.planet-label--pointed .planet-label__name) {
   color: #d3fbb2;
 }
-.scene--overview:not(.scene--customizing) :deep(.planet-label--sun) {
+.scene:not(.scene--customizing) :deep(.planet-label--sun) {
   pointer-events: auto;
   cursor: pointer;
 }
