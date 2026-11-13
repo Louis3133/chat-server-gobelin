@@ -92,7 +92,7 @@ onMounted(async () => {
 </script>
 
 <style>
-html, body { margin: 0; overflow: hidden; }
+html, body { margin: 0; overflow: hidden; background: #05060f; }
 .app, .background { position: fixed; inset: 0; }
 .background { z-index: 0; }
 .v-btn.logout { position: fixed; top: 16px; right: 16px; z-index: 10; }

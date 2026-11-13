@@ -46,7 +46,7 @@
       <div v-if="planet.me" class="planet-profile__ctas">
         <button class="pixel-btn planet-profile__write" type="button" @click="openSettings">
           Mes réglages
-          <img class="pixel-icon" src="/icons/actions/tools.svg" alt="">
+          <img class="pixel-icon" src="/icons/actions/settings.svg" alt="">
         </button>
       </div>
 
@@ -351,11 +351,6 @@ const status = (m: Message) => {
   padding: var(--space-1);
 }
 
-.planet-settings__validate:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .planet-settings__row {
   display: flex;
   align-items: center;
@@ -392,9 +387,25 @@ const status = (m: Message) => {
 
 .planet-settings__customize {
   justify-content: center;
+  width: 100% !important;
   margin-top: var(--space-2);
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-2);
   font-size: var(--subtitle-size);
   text-decoration: none;
+}
+
+@media (max-width: 599px) {
+  .planet-profile {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .planet-profile__more {
+    flex: none;
+  }
+
+  .planet-profile__letters {
+    overflow-y: visible;
+  }
 }
 </style>

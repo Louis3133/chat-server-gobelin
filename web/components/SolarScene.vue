@@ -64,6 +64,7 @@ const tweaks = {
   landing: 0.2,
   hearing: 8,
   music: MUSIC_VOLUME,
+  rockets: 0.5,
   haloWidth: 0.28,
   haloColor: '#bfe6ff',
   haloOpacity: 0.35,
@@ -632,7 +633,7 @@ const rocketSounds = (now: number) => {
   for (const dot of letters.children) {
     const { key, start, end } = dot.userData
     const phase = now >= end ? 'landed' : end - now <= LANDING_MS ? 'landing' : now - start < TAKEOFF_MS ? 'takeoff' : 'flight'
-    const near = clamp01(1 - camera.position.distanceTo(dot.position) / tweaks.hearing)
+    const near = clamp01(1 - camera.position.distanceTo(dot.position) / tweaks.hearing) * tweaks.rockets
     if (phase !== rocketPhases.get(key)) {
       rocketVoices.delete(key)
       if (phase === 'takeoff') rocketVoices.set(key, sound.play('decollage', near, (now - start) / 1000))
@@ -763,7 +764,7 @@ const planetAt = (event: MouseEvent) => {
 }
 
 const openSun = (group: THREE.Object3D) => {
-  if (props.overview && group.userData.channel) emit('open', group.userData.channel)
+  if (props.overview && !props.customizing && group.userData.channel) emit('open', group.userData.channel)
 }
 
 const rayAt = (event: MouseEvent) => {
@@ -1368,6 +1369,7 @@ onMounted(() => {
     const soundsFolder = pane.addFolder({ title: 'Sons', expanded: false })
     soundsFolder.addBinding(tweaks, 'music', { label: 'Musique', min: 0, max: 1, step: 0.01 })
       .on('change', () => sound.setMusicVolume(tweaks.music))
+    soundsFolder.addBinding(tweaks, 'rockets', { label: 'Fusées', min: 0, max: 1, step: 0.01 })
 
     const haloFolder = pane.addFolder({ title: 'Halo de sélection', expanded: false })
     haloFolder.addBinding(tweaks, 'haloWidth', { label: 'Épaisseur', min: 0.04, max: 0.28, step: 0.01 })
@@ -1497,7 +1499,7 @@ onBeforeUnmount(() => {
 .scene :deep(.planet-label--pointed .planet-label__name) {
   color: #d3fbb2;
 }
-.scene--overview :deep(.planet-label--sun) {
+.scene--overview:not(.scene--customizing) :deep(.planet-label--sun) {
   pointer-events: auto;
   cursor: pointer;
 }

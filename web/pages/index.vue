@@ -168,11 +168,6 @@ onMounted(async () => {
   font-size: var(--subtitle-size);
 }
 
-.wide:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .field {
   display: flex;
   flex: 1;

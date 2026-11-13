@@ -277,11 +277,6 @@ a.salon-item:hover {
   padding: var(--space-1) var(--space-2);
 }
 
-.salons__row .pixel-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .field {
   display: flex;
   flex: 1;
