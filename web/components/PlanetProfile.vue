@@ -9,7 +9,7 @@
       </div>
       <label class="planet-settings__row">
         <img class="pixel-icon" src="/icons/actions/earth.svg" alt="Nom de la planète">
-        <input v-model="draft.planet_name" class="planet-settings__field text-body" placeholder="Nom de ta planète" maxlength="40" :readonly="saving" autocomplete="off">
+        <input v-model="draft.planet_name" class="planet-settings__field text-body" placeholder="Nom de ta planète" maxlength="22" :readonly="saving" autocomplete="off">
       </label>
       <label class="planet-settings__row">
         <img class="pixel-icon" src="/icons/actions/pronoms.svg" alt="Pronoms">
