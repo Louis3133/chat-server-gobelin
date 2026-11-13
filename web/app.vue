@@ -4,7 +4,7 @@
     <SolarScene class="background" :system="system" :decor="decor" :channels="channels" :messages="messages" :selected-id="selectedId" :followed-letter="followedLetter" :opened-letter="openedLetter" :customizing="customizing" :focus-area="focusArea" :overview="!system" @select="pick" @open="openChannel" @sun="openSunPanel" @read="openedLetter = $event" @rocket="onRocket" />
     <template v-if="route.path !== '/' && route.path !== '/planet' && !planetView">
       <v-btn v-if="xs" class="logout" icon="mdi-logout" color="white" variant="outlined" title="Déconnexion" aria-label="Déconnexion" @click="logout" />
-      <v-btn v-else class="logout" color="white" variant="outlined" prepend-icon="mdi-logout" @click="logout">
+      <v-btn v-else class="logout" color="white" variant="outlined" append-icon="mdi-logout" @click="logout">
         Déconnexion
       </v-btn>
     </template>

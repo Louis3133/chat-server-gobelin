@@ -12,7 +12,7 @@
       </div>
       <div class="letter-actions pixel-frame">
         <span class="text-caption px-2">De {{ from }}</span>
-        <v-btn v-if="removable" variant="text" color="red" prepend-icon="mdi-rocket-launch-outline" @click="emit('remove')">Retirer la fusée</v-btn>
+        <v-btn v-if="removable" variant="text" color="red" append-icon="mdi-rocket-launch-outline" @click="emit('remove')">Retirer la fusée</v-btn>
         <v-btn variant="text" @click="open = false">Fermer</v-btn>
       </div>
     </div>
