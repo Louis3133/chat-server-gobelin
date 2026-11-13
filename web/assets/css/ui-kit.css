@@ -20,6 +20,7 @@
   --Zib: radial-gradient(50% 50% at 50% 50%, #d3fbb2 43.75%, #7d956a 100%);
   --Kenny: linear-gradient(180deg, rgba(255, 255, 255, 0.30) 26.44%, rgba(115, 115, 115, 0.30) 64.42%);
   --King: linear-gradient(180deg, #A0A0A0 0%, #3F3F3F 100%);
+  --Kana: #A0A0A0;
 }
 
 body {
@@ -100,7 +101,7 @@ body {
 .pixel-btn:disabled,
 .v-btn.v-btn--disabled:not(.v-tab) {
   border-image: var(--King) 1 / 1px;
-  background: var(--Kenny) !important;
+  background: var(--Kenny) border-box, var(--Kana) !important;
   opacity: 1;
   cursor: default;
 }
