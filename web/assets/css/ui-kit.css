@@ -152,6 +152,62 @@ body {
   height: 24px;
 }
 
+/* Pastilles de couleur rondes (pixel-ring + pixel-disc) */
+.swatch-btn {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  aspect-ratio: 1;
+  color: #fff;
+  cursor: pointer;
+}
+
+.swatch-btn::before,
+.swatch-fill {
+  content: '';
+  position: absolute;
+  mask-size: 100% 100%;
+  -webkit-mask-size: 100% 100%;
+}
+
+.swatch-btn::before {
+  inset: 0;
+  z-index: 1;
+  background: currentColor;
+  mask-image: url('/pixel-ring.svg');
+  -webkit-mask-image: url('/pixel-ring.svg');
+}
+
+.swatch-fill {
+  inset: 18.75%;
+  mask-image: url('/pixel-disc.svg');
+  -webkit-mask-image: url('/pixel-disc.svg');
+}
+
+.swatch-btn.selected {
+  color: #b5e48c;
+}
+
+.swatch-btn.selected .swatch-fill {
+  inset: 12.5%;
+}
+
+.swatch-plus {
+  position: relative;
+  z-index: 1;
+  font-size: 24px;
+  line-height: 1;
+  text-shadow: 0 0 3px #000;
+}
+
+.swatch-btn input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
 /* Défilement */
 .pixel-scroll {
   scrollbar-color: var(--color-text) transparent;

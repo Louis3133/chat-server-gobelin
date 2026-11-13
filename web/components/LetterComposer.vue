@@ -32,7 +32,14 @@
         </button>
       </div>
       <div v-if="paletteOpen && !previewing" class="palette pixel-frame">
-        <button v-for="swatch in PALETTE" :key="swatch.value" :class="{ current: swatch.value === color }" :style="{ background: swatch.value }" :aria-label="swatch.name" @click="pickColor(swatch.value)" class="swatch"></button>
+        <button v-for="swatch in PALETTE" :key="swatch.value" :class="{ selected: swatch.value === color }" :aria-label="swatch.name" @click="pickColor(swatch.value)" type="button" class="swatch-btn">
+          <span :style="{ background: swatch.value }" class="swatch-fill" />
+        </button>
+        <label :class="{ selected: customColor }" title="Autre couleur" class="swatch-btn">
+          <span v-if="customColor" :style="{ background: color }" class="swatch-fill" />
+          <span class="swatch-plus">+</span>
+          <input :value="color" @change="pickColor(($event.target as HTMLInputElement).value)" type="color" aria-label="Autre couleur">
+        </label>
       </div>
       </div>
       <div ref="frame" :style="{ height: `calc(${frameHeight}px + 2 * var(--frame-width))` }" class="letter-frame pixel-frame">
@@ -134,6 +141,14 @@
   gap: 12px;
   padding: 12px;
   transform: translateX(-50%);
+}
+
+.palette .swatch-btn {
+  width: 40px;
+}
+
+.palette .swatch-plus {
+  font-size: 18px;
 }
 
 .swatch {
@@ -432,10 +447,10 @@ const PALETTE = [
   { name: 'Rose', value: '#ff7eb6' },
   { name: 'Violet', value: '#a77bff' },
   { name: 'Bleu', value: '#4da6ff' },
-  { name: 'Vert', value: '#5ed67a' },
 ]
 
 const color = ref(PALETTE[0]!.value)
+const customColor = computed(() => !PALETTE.some(swatch => swatch.value === color.value))
 const paletteOpen = ref(false)
 
 // Stroke width
