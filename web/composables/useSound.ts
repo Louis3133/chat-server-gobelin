@@ -6,6 +6,7 @@ const SOUNDS = {
   zibzib: '/sounds/zibzib.mp3',
   disabled: '/sounds/disabled.mp3',
   delete: '/sounds/delete.mp3',
+  click: '/sounds/ui-click.mp3',
 } as const
 
 export type SoundName = keyof typeof SOUNDS
