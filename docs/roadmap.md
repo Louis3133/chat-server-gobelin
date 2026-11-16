@@ -4,8 +4,8 @@ Une étape = une session de travail courte. Cocher quand c'est terminé. Lire `d
 
 ## 0. Hygiène du dépôt
 - [x] Ignorer `web/node_modules` et les dossiers générés (`web/.gitignore`)
-- [x] Retirer le binaire `api/api` de l'index (dossier `api/` supprimé)
-- [ ] Retirer le JWT de `memory_help.txt`
+- [x] Retirer le binaire `api/api` de l'index et l'ajouter à `api/.gitignore`
+- [x] Retirer le JWT de `memory_help.txt` (fichier supprimé)
 - [ ] Commit de nettoyage séparé du reste
 - [ ] Formater le Go (`gofmt`) sur les fichiers modifiés
 
@@ -67,15 +67,13 @@ Une étape = une session de travail courte. Cocher quand c'est terminé. Lire `d
 - [x] Retirer la fusée de sa planète (« pouf »), la lettre reste (migration 00008, `DELETE /channel/message/rocket`)
 - [ ] Essai dans le navigateur (ouverture du nez, pouf) : seuls `nuxt build` et l'API (Postgres jetable) ont été vérifiés
 
-## 5 quater. API partagée de l'atelier
-- [x] `useChatApi` reconstruit sur le serveur commun (métadonnées du namespace `epistellaire`), même interface pour les pages
-- [x] Règles des lettres, distances et visibilité portées côté front (`utils/letterRules.ts`, `utils/sharedApi.ts`)
-- [x] Essai de bout en bout contre une copie locale du serveur de la prof (18 scénarios, pages sans erreur)
-- [x] Variable Vercel `NUXT_PUBLIC_API_BASE`
-- [x] Variable Vercel `NUXT_PUBLIC_ADMIN_USERNAMES`
-- [x] Retirer `api/`, `db/` et leurs services de `docker-compose.yml`
-- [ ] Arrêter Render et Neon
-- [ ] Temps réel avec le WebSocket de l'API partagée (`/channel/socket`)
+## 5 quater. Retour à notre propre API
+- [x] Essai sur l'API partagée de l'atelier puis abandon : trop de contraintes (pas de confidentialité serveur, rien ne se supprime, `PUT /channel` cassé)
+- [x] API Go (`api/`) et base (`db/`) restaurées, le front reparle à notre API (même interface `useChatApi`)
+- [ ] Vérifier que Render et Neon tournent encore, sinon les relancer
+- [ ] Variable Vercel `NUXT_PUBLIC_API_BASE` = URL Render, retirer `NUXT_PUBLIC_ADMIN_USERNAMES` et `NUXT_PUBLIC_LETTER_*`
+- [ ] Variables Render : `JWT_SECRET`, `DATABASE_URL`, `ADMIN_USERNAMES`, `LETTER_*`
+- [ ] Essai de bout en bout en local (`docker compose up --build`) puis en prod
 
 ## 6. Finitions
 - [ ] Temps réel (polling puis WebSocket si besoin)

@@ -1,0 +1,4 @@
+ALTER TABLE users
+    DROP COLUMN IF EXISTS planet_name,
+    DROP COLUMN IF EXISTS pronouns,
+    DROP COLUMN IF EXISTS bio;
