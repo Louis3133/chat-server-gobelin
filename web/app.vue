@@ -1,7 +1,7 @@
 <template>
   <div class="app">
     <!-- La scène vit ici, derrière toutes les pages : elle ne se recharge pas à la navigation -->
-    <SolarScene class="background" :system="system" :decor="decor" :channels="channels" :messages="messages" :selected-id="selectedId" :followed-letter="followedLetter" :opened-letter="openedLetter" :customizing="customizing" :focus-area="focusArea" :overview="!system" @select="pick" @open="openChannel" @sun="openSunPanel" @read="openedLetter = $event" @rocket="onRocket" />
+    <SolarScene class="background" :system="system" :decor="decor" :channels="channels" :messages="messages" :selected-id="selectedId" :followed-letter="followedLetter" :opened-letter="openedLetter" :customizing="customizing" :focus-area="focusArea" :overview="!system" :me-id="meId" @select="pick" @open="openChannel" @sun="openSunPanel" @read="openedLetter = $event" @rocket="onRocket" />
     <template v-if="route.path !== '/' && route.path !== '/planet' && !planetView">
       <v-btn v-if="xs" class="logout" icon="mdi-logout" color="white" variant="outlined" title="Déconnexion" aria-label="Déconnexion" @click="logout" />
       <v-btn v-else class="logout" color="white" variant="outlined" append-icon="mdi-logout" @click="logout">
@@ -11,18 +11,23 @@
     <div class="ui-layer">
       <NuxtPage />
     </div>
+    <ChannelPassword v-model="lockedChannel" @entered="goTo" />
   </div>
 </template>
 
 <script setup lang="ts">
-const { system, messages, selectedId, profileOpen, channelOpen, clickedRocket, decor, channels, followedLetter, openedLetter, customizing, focusArea } = useScene()
+const { system, messages, selectedId, profileOpen, channelOpen, clickedRocket, decor, channels, followedLetter, openedLetter, customizing, focusArea, meId } = useScene()
 const api = useChatApi()
 const route = useRoute()
 const { xs } = useDisplay()
 const planetView = computed(() => !!system.value?.planets.some((p) => p.id === selectedId.value))
 
+const lockedChannel = ref<Channel | null>(null)
+
 const logout = async () => {
   api.clearToken()
+  lockedChannel.value = null
+  meId.value = null
   system.value = null
   messages.value = []
   selectedId.value = null
@@ -52,11 +57,24 @@ const onRocket = (key: string | null) => {
   if (key) profileOpen.value = channelOpen.value = false
 }
 
-// Clic sur un soleil : rejoindre le salon (sans effet si on y est déjà), puis l'ouvrir ; la page du salon affiche l'erreur s'il y en a une
+// Salon rejoint : membres à jour dans la scène, puis ouverture du salon
+const goTo = async (channel: Channel) => {
+  channels.value = (await api.getChannels().catch(() => null)) ?? channels.value
+  await navigateTo(`/channels/${channel.id}`)
+}
+
+// Clic sur un soleil : rejoindre le salon (sans effet si on y est déjà), mot de passe demandé s'il est protégé ; la page du salon affiche les autres erreurs
 const openChannel = async (channel: Channel) => {
   if (!api.getToken()) return
-  await api.enterChannel(channel.name).catch(() => {})
-  await navigateTo(`/channels/${channel.id}`)
+  try {
+    await api.enterChannel(channel.name)
+  } catch (error: any) {
+    if (error?.response?.status === 403) {
+      lockedChannel.value = channel
+      return
+    }
+  }
+  await goTo(channel)
 }
 
 // Sons : musique dès l'arrivée, débloqués au premier geste ; clic sur un bouton, son à part s'il est désactivé

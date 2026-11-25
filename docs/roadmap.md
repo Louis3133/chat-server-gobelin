@@ -75,6 +75,13 @@ Une étape = une session de travail courte. Cocher quand c'est terminé. Lire `d
 - [ ] Variables Render : `JWT_SECRET`, `DATABASE_URL`, `ADMIN_USERNAMES`, `LETTER_*`
 - [ ] Essai de bout en bout en local (`docker compose up --build`) puis en prod
 
+## 5 quinquies. Salons pour les portfolios
+- [x] `general` affiché « Libre », plus d'inscription automatique : chacun choisit son salon dans la vue d'ensemble
+- [x] Mot de passe facultatif d'un salon (migration 00012), demandé une seule fois à l'entrée, posé à la création ou depuis la fiche du soleil (admins et propriétaire)
+- [x] Cadenas sur le nom des soleils protégés, fenêtre de mot de passe au clic
+- [ ] En prod : créer le salon ECNI avec son mot de passe
+- [ ] Essai visuel des planètes dans le navigateur (Chrome headless n'affiche pas les planètes, même avant ce changement)
+
 ## 6. Finitions
 - [ ] Temps réel (polling puis WebSocket si besoin)
 - [ ] Textures, sons, polish visuel

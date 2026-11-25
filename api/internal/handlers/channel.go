@@ -12,6 +12,8 @@ import (
 
 	"chat-gobelin-api/internal/users"
 	"chat-gobelin-api/internal/channels"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type channelHandler struct {
@@ -30,10 +32,22 @@ func NewChannelHandler(s channels.Repo, u users.Repo, admins map[string]bool) (*
 
 type createChannelRequest struct {
 	Name string `json:"name" binding:"required"`
+	Password string `json:"password"`
 }
 
 type EnterChannelRequest struct {
 	ChannelName string `json:"channel" binding:"required"`
+	Password string `json:"password"`
+}
+
+const maxChannelPassword = 72
+
+// Hash bcrypt d'un mot de passe de salon ; vide : pas de mot de passe
+func hashChannelPassword(password string) ([]byte, error) {
+	if password == "" {
+		return nil, nil
+	}
+	return bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 }
 
 func (h channelHandler) Create(writer http.ResponseWriter, request *http.Request) {
@@ -65,8 +79,18 @@ func (h channelHandler) Create(writer http.ResponseWriter, request *http.Request
 		http.Error(writer, "name required", http.StatusBadRequest)
 		return
 	}
+	if len(req.Password) > maxChannelPassword {
+		http.Error(writer, fmt.Sprintf("password must be at most %d bytes", maxChannelPassword), http.StatusBadRequest)
+		return
+	}
+	hash, err := hashChannelPassword(req.Password)
+	if err != nil {
+		log.Printf("Error hashing channel password: %s", err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 
-	channel, err := h.channelRepo.Create(ctx, req.Name, &user.ID)
+	channel, err := h.channelRepo.Create(ctx, req.Name, &user.ID, hash)
 	if err != nil {
 		log.Printf("Error creating channel: %s", err.Error())
 		writer.WriteHeader(http.StatusInternalServerError)
@@ -110,10 +134,34 @@ func (h channelHandler) EnterChannel(writer http.ResponseWriter, request *http.R
 	}
 
 	channel, err := h.channelRepo.GetByName(ctx, req.ChannelName)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(writer, "Channel not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
 		log.Printf("Error finding channel: %s", err)
 		writer.WriteHeader(http.StatusInternalServerError)
 		return
+	}
+
+	// Salon protégé : mot de passe demandé une seule fois, ni aux membres ni aux admins
+	if channel.PasswordHash != nil && !h.admins[user.Username] {
+		member, err := h.channelRepo.IsMember(ctx, channel.ID, user.ID)
+		if err != nil {
+			log.Printf("Error checking membership: %s", err.Error())
+			writer.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if !member {
+			if req.Password == "" {
+				http.Error(writer, "password required", http.StatusForbidden)
+				return
+			}
+			if bcrypt.CompareHashAndPassword(channel.PasswordHash, []byte(req.Password)) != nil {
+				http.Error(writer, "wrong password", http.StatusForbidden)
+				return
+			}
+		}
 	}
 
 	err = h.channelRepo.AddUserToChannel(ctx, *channel, *user)
@@ -206,6 +254,78 @@ func (h channelHandler) UpdateBio(writer http.ResponseWriter, request *http.Requ
 	updated, err := h.channelRepo.UpdateBio(ctx, channelID, req.Bio)
 	if err != nil {
 		log.Printf("Error updating channel bio: %s", err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	result, err := json.Marshal(updated)
+	if err != nil {
+		log.Printf("Error marshaling value: %s", err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	writer.Write(result)
+}
+
+type setPasswordRequest struct {
+	Password string `json:"password"`
+}
+
+// SetPassword : PUT /channel/password?channel=ID, admins et propriétaire ; vide : retire le mot de passe
+func (h channelHandler) SetPassword(writer http.ResponseWriter, request *http.Request) {
+	ctx := request.Context()
+
+	user, ok := currentUser(writer, request)
+	if !ok {
+		return
+	}
+
+	channelID, ok := channelIDFromQuery(writer, request)
+	if !ok {
+		return
+	}
+
+	var req setPasswordRequest
+	if err := json.NewDecoder(request.Body).Decode(&req); err != nil {
+		http.Error(writer, "invalid body", http.StatusBadRequest)
+		return
+	}
+	if len(req.Password) > maxChannelPassword {
+		http.Error(writer, fmt.Sprintf("password must be at most %d bytes", maxChannelPassword), http.StatusBadRequest)
+		return
+	}
+
+	channel, err := h.channelRepo.GetByID(ctx, channelID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(writer, "Channel not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("Error finding channel: %s", err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	isOwner := channel.OwnerID != nil && *channel.OwnerID == user.ID
+	if !h.admins[user.Username] && !isOwner {
+		http.Error(writer, "Forbidden", http.StatusForbidden)
+		return
+	}
+	if channel.Name == "general" && req.Password != "" {
+		http.Error(writer, "The general channel stays open", http.StatusBadRequest)
+		return
+	}
+
+	hash, err := hashChannelPassword(req.Password)
+	if err != nil {
+		log.Printf("Error hashing channel password: %s", err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	updated, err := h.channelRepo.SetPassword(ctx, channelID, hash)
+	if err != nil {
+		log.Printf("Error updating channel password: %s", err.Error())
 		writer.WriteHeader(http.StatusInternalServerError)
 		return
 	}

@@ -47,6 +47,7 @@ const props = defineProps<{
   customizing: { id: number; look: PlanetLook; texture: string | null } | null
   focusArea: { top: number; bottom: number } | null
   overview: boolean
+  meId: number | null
 }>()
 const emit = defineEmits<{ select: [id: number]; open: [channel: Channel]; sun: []; read: [key: string]; rocket: [key: string | null] }>()
 const api = useChatApi()
@@ -730,6 +731,27 @@ const makeSun = (name: string | null) => {
   return group
 }
 
+// Nom du soleil, cadenas si le salon a un mot de passe et qu'on n'en est pas membre
+const isMember = (channel: Channel) =>
+  props.system?.channel.id === channel.id || (props.meId != null && !!channel.member_ids?.includes(props.meId))
+
+const setSunLabel = (group: THREE.Object3D, channel: Channel | null) => {
+  const el = group.userData.label as HTMLElement | undefined
+  if (!el) return
+  const text = channel ? channelLabel(channel) : 'Libre'
+  const locked = !!channel?.locked && !isMember(channel)
+  if (el.dataset.text === text && el.dataset.locked === String(locked)) return
+  el.dataset.text = text
+  el.dataset.locked = String(locked)
+  el.replaceChildren(text)
+  if (!locked) return
+  const lock = document.createElement('img')
+  lock.className = 'planet-label__lock'
+  lock.src = '/icons/actions/lock.svg'
+  lock.alt = 'protégé'
+  el.append(lock)
+}
+
 // Vue d'ensemble : survol et clic d'un soleil pour choisir son salon
 const setHovered = (group?: THREE.Group) => {
   if (hoveredSun === group) return
@@ -803,6 +825,14 @@ const updateOrbits = () => {
 }
 updateOrbits()
 
+// Décor de Libre : ses membres, et sa propre planète pendant la personnalisation
+const generalDecor = () => {
+  const general = props.channels.find((c) => keyOf(c) === 'general')
+  if (!props.decor || !general) return props.decor
+  const members = new Set(general.member_ids ?? [])
+  return { ...props.decor, planets: props.decor.planets.filter((p) => members.has(p.id) || p.id === props.customizing?.id) }
+}
+
 // Synchronisation avec les données
 const syncSystem = () => {
   if (!ready) return
@@ -825,12 +855,14 @@ const syncSystem = () => {
       scene.add(group)
       suns.set(key, group)
     }
-    suns.get(key)!.position.copy(pos)
-    suns.get(key)!.userData.channel = channel ?? props.channels.find((c) => keyOf(c) === key) ?? null
+    const sun = suns.get(key)!
+    sun.position.copy(pos)
+    sun.userData.channel = channel ?? props.channels.find((c) => keyOf(c) === key) ?? null
+    setSunLabel(sun, sun.userData.channel)
   }
 
   const shown: { key: string; sys: SolarSystem }[] = []
-  const general = activeKey === 'general' && props.system ? props.system : props.decor
+  const general = activeKey === 'general' && props.system ? props.system : generalDecor()
   if (general) shown.push({ key: 'general', sys: general })
   if (props.system && activeKey !== 'general') shown.push({ key: activeKey, sys: props.system })
   for (const [key, { channel }] of where) {
@@ -1418,6 +1450,7 @@ onMounted(() => {
 })
 
 watch(() => [props.system, props.decor, props.channels], () => { syncSystem(); syncLetters() })
+watch(() => props.meId, syncSystem)
 watch(() => props.system?.channel.id, () => { followedKey = null; adjustingZoom = true; snapOverview = false })
 watch(() => props.messages, syncLetters)
 watch(() => props.followedLetter, (key) => {
@@ -1430,6 +1463,8 @@ watch(() => props.selectedId, () => { followedKey = null; adjustingZoom = true; 
 watch(() => props.customizing, previewLook, { deep: true })
 watch(() => props.decor, previewLook)
 watch(() => props.customizing?.id, () => {
+  syncSystem()
+  previewLook()
   adjustingZoom = true
   snapOverview = false
   if (controls) lockControls()
@@ -1487,8 +1522,16 @@ onBeforeUnmount(() => {
   opacity: 0.85;
 }
 .scene :deep(.planet-label--sun) {
+  flex-direction: row;
+  align-items: center;
   font-size: 20px;
   transition: font-size 0.15s, color 0.15s;
+}
+.scene :deep(.planet-label__lock) {
+  width: 0.8em;
+  height: 0.8em;
+  margin-left: 0.3em;
+  image-rendering: pixelated;
 }
 .scene :deep(.planet-label--hover) {
   font-size: 24px;

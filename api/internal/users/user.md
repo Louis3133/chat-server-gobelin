@@ -40,7 +40,7 @@ If successful, return:
 }
 ```
 
-Same information as /me. Users are automatically added to the general channels. Better error handling will happen but for now ask the dev if it return a 500.
+Same information as /me. Un nouvel utilisateur n'est dans aucun salon : il choisit le sien dans la vue d'ensemble (`POST /channel/enter`). Better error handling will happen but for now ask the dev if it return a 500.
 
 ## My informations
 GET **/me**

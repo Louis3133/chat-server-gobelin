@@ -1,6 +1,6 @@
 <template>
   <div>
-  <InfoMenu title="Mes salons" icon="/icons/actions/tools.svg">
+  <InfoMenu title="Choisis ton salon" icon="/icons/actions/tools.svg">
   <template v-if="me?.is_admin" #default>
   <div class="salons pixel-frame pixel-scroll">
     <div class="salons__header">
@@ -18,7 +18,7 @@
       <li v-for="c in me.channels" :key="c.id">
         <NuxtLink class="salon-item pixel-frame" :to="`/channels/${c.id}`">
           <span class="salon-item__text">
-            <span class="text-body">{{ c.name }}</span>
+            <span class="text-body">{{ channelLabel(c) }}</span>
             <span class="text-body salon-item__sub">{{ planetCount(c) }}</span>
           </span>
         </NuxtLink>
@@ -33,7 +33,7 @@
         <span v-if="toJoin" class="field-label">Salon</span>
         <select v-model="toJoin" :disabled="!joinable.length">
           <option :value="null" disabled>{{ joinable.length ? 'Salon' : 'Aucun salon à rejoindre' }}</option>
-          <option v-for="name in joinable" :key="name" :value="name">{{ name }}</option>
+          <option v-for="c in joinable" :key="c.id" :value="c.name">{{ channelLabel(c) }}</option>
         </select>
       </label>
       <button class="pixel-btn" type="submit" :disabled="!toJoin || busy">Rejoindre</button>
@@ -47,6 +47,10 @@
       </label>
       <button class="pixel-btn" type="submit" :disabled="!newName.trim() || busy">Créer</button>
     </form>
+    <label class="field">
+      <span v-if="newPassword" class="field-label">Mot de passe (facultatif)</span>
+      <input v-model="newPassword" type="password" placeholder="Mot de passe (facultatif)" :readonly="busy" autocomplete="new-password">
+    </label>
 
     <template v-if="me">
       <hr class="salons__separator">
@@ -54,10 +58,10 @@
       <ul class="salons__list">
         <li v-for="c in deletableChannels" :key="c.id" class="salon-item pixel-frame">
           <span class="salon-item__text">
-            <span class="text-body">{{ c.name }}</span>
+            <span class="text-body">{{ channelLabel(c) }}</span>
             <span class="text-body salon-item__sub">{{ planetCount(c) }}</span>
           </span>
-          <button class="salon-item__delete" type="button" :disabled="busy" :title="`Supprimer ${c.name}`" :aria-label="`Supprimer ${c.name}`" @click="removeChannel(c)">
+          <button class="salon-item__delete" type="button" :disabled="busy" :title="`Supprimer ${channelLabel(c)}`" :aria-label="`Supprimer ${channelLabel(c)}`" @click="removeChannel(c)">
             <img class="pixel-icon" src="/icons/actions/close.svg" alt="">
           </button>
         </li>
@@ -94,17 +98,19 @@ const allChannels = ref<Channel[]>([])
 const allUsers = ref<PublicUser[]>([])
 const toJoin = ref<string | null>(null)
 const newName = ref('')
+const newPassword = ref('')
 const busy = ref(false)
 const snackbar = ref(false)
 const snackbarText = ref('')
 
 const joinable = computed(() => {
   const mine = new Set(me.value?.channels.map((c) => c.id))
-  return allChannels.value.filter((c) => !mine.has(c.id)).map((c) => c.name)
+  return allChannels.value.filter((c) => !mine.has(c.id))
 })
 
 const logout = () => {
   api.clearToken()
+  scene.meId.value = null
   navigateTo('/')
 }
 
@@ -128,6 +134,7 @@ const fail = (error: unknown) => {
 
 const refresh = async () => {
   me.value = await api.getMe()
+  scene.meId.value = me.value.id
   allChannels.value = (await api.getChannels()) ?? []
   scene.channels.value = allChannels.value
   if (me.value.is_admin) allUsers.value = (await api.getUsers()) ?? []
@@ -148,12 +155,13 @@ const run = async (action: () => Promise<unknown>) => {
 
 const join = () => run(() => api.enterChannel(toJoin.value!))
 const create = () => run(async () => {
-  await api.createChannel(newName.value)
+  await api.createChannel(newName.value, newPassword.value)
   newName.value = ''
+  newPassword.value = ''
 })
 
 const removeChannel = (c: Channel) => {
-  if (!confirm(`Supprimer le salon « ${c.name} » et toutes ses lettres ?`)) return
+  if (!confirm(`Supprimer le salon « ${channelLabel(c)} » et toutes ses lettres ?`)) return
   run(() => api.deleteChannel(c.id))
 }
 const removeUser = (u: PublicUser) => {

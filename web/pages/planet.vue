@@ -127,7 +127,7 @@
 definePageMeta({ middleware: 'auth' })
 
 const api = useChatApi()
-const { decor, customizing, focusArea } = useScene()
+const { decor, customizing, focusArea, meId } = useScene()
 
 const picker = ref<HTMLInputElement>()
 const saving = ref(false)
@@ -276,6 +276,7 @@ const save = async () => {
 onMounted(async () => {
   try {
     const [me, users] = await Promise.all([api.getMe(), api.getUsers()])
+    meId.value = me.id
     decor.value = buildDecor(users ?? [])
     profile.value = { planet_name: me.planet_name ?? '', pronouns: me.pronouns ?? '', bio: me.bio ?? '' }
     const version = me.planet_texture_version ?? 0

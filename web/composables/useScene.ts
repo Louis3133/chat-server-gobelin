@@ -11,6 +11,8 @@ export const useScene = () => ({
   // Fusée cliquée (clé de sa lettre) : son panneau ne s'affiche que pour l'expéditeur d'une lettre en route
   clickedRocket: useState<string | null>('scene-clicked-rocket', () => null),
   decor: useState<SolarSystem | null>('scene-decor', () => null),
+  // Id de l'utilisateur connecté : pas de cadenas sur les salons dont il est membre
+  meId: useState<number | null>('scene-me', () => null),
   channels: useState<Channel[]>('scene-channels', () => []),
   followedLetter: useState<string | null>('scene-followed-letter', () => null),
   // Fusée posée que le destinataire vient d'ouvrir : son nez reste ouvert tant que la lettre est affichée

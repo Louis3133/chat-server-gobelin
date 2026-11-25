@@ -9,5 +9,7 @@ type Channel struct {
 	OwnerID *int64 `db:"owner_id" json:"owner_id"` // admin du salon ; nil pour ceux créés par le système (general)
 	CreationDate string `db:"creation_date" json:"creation_date"`
 	Bio string `db:"bio" json:"bio"`
+	PasswordHash []byte `db:"password_hash" json:"-"`
+	Locked bool `db:"locked" json:"locked"`
 	MemberIDs []int64 `db:"-" json:"member_ids,omitempty"` // rempli seulement par GetAllChannels (planètes des autres soleils)
 }
