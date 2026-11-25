@@ -84,6 +84,8 @@ Une étape = une session de travail courte. Cocher quand c'est terminé. Lire `d
 - [ ] Essai visuel des planètes dans le navigateur (Chrome headless n'affiche pas les planètes, même avant ce changement)
 
 ## 6. Finitions
-- [ ] Temps réel (polling puis WebSocket si besoin)
+- [x] Temps réel par polling : page du salon rafraîchie toutes les 5 s (`?light=1`, sans contenu), en pause onglet caché
+- [x] Les fusées entre deux autres membres sont visibles par tout le salon (sans contenu)
+- [ ] WebSocket si le polling ne suffit pas
 - [ ] Textures, sons, polish visuel
 - [ ] Mode démo avec temps accéléré

@@ -39,7 +39,8 @@ En local, les mettre dans `.env` à la racine (voir `.env.example`), puis `docke
 ## Confidentialité
 - Une lettre en route n'est **jamais** envoyée à son destinataire avec son contenu : la requête SQL la vide
   (`content` = `""`, `in_transit` = `true`), il ne voit que l'expéditeur et la date d'arrivée (`deliver_at`).
-- L'expéditeur voit ses propres lettres, en route ou non. Personne ne voit les lettres des autres.
+- L'expéditeur voit ses propres lettres, en route ou non. Les autres membres voient passer toutes les fusées du salon
+  (expéditeur, destinataire, dates) mais **jamais leur contenu** : la requête le vide pour eux aussi.
 - `GET /channel/system` ne renvoie que **les distances de celui qui demande**, pas celles des autres couples.
 - Il faut être membre du salon pour y lire, y écrire, ou voir son système (sinon 403).
 
