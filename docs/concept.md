@@ -26,7 +26,8 @@
 - [x] Le channel `general` est conservé, affiché « Général » : ouvert à tous mais plus d'inscription automatique (décision du 25/11/2026, portfolios).
 - [x] Salon protégé par un mot de passe (ECNI) : demandé une seule fois, ses planètes restent visibles de loin avec un cadenas.
 - [x] Lettres de groupe : **non** pour le MVP. Un message sans destinataire reste un message de salon, livré tout de suite.
-- [ ] Temps réel : polling pour le MVP, WebSocket ensuite.
+- [x] Temps réel : polling toutes les 5 s (décision du 25/11/2026), WebSocket plus tard si besoin.
+- [x] Les fusées des autres se voient (expéditeur, destinataire, trajet), jamais leur contenu.
 
 ## Modèle de données cible (brouillon)
 Existant : `users`, `channels`, `user_channels`, `messages` (voir `api/migrations/00001_*`).

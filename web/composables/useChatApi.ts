@@ -209,8 +209,9 @@ export const useChatApi = () => {
   const getSystem = (channelId: number) =>
     request<SolarSystem>('/channel/system', { params: { channel: channelId } })
 
-  const getMessages = async (channelId: number): Promise<Message[]> =>
-    (await request<Message[] | null>('/channel/message', { params: { channel: channelId } })) ?? []
+  // light : sans aucun contenu, pour le rafraîchissement régulier
+  const getMessages = async (channelId: number, light = false): Promise<Message[]> =>
+    (await request<Message[] | null>('/channel/message', { params: { channel: channelId, ...(light ? { light: 1 } : {}) } })) ?? []
 
   // Sans recipientId : message de salon, livré tout de suite. Avec : lettre, livrée à deliver_at.
   const sendMessage = (channelId: number, content: string, recipientId?: number) =>

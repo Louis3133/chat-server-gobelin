@@ -152,7 +152,16 @@ watch(recipientId, (id) => {
   profileOpen.value = false
 })
 
-const read = (m: Message) => {
+// Le rafraîchissement léger n'apporte pas le contenu : on le récupère à la lecture
+const read = async (m: Message) => {
+  if (!m.content) {
+    try {
+      messages.value = await api.getMessages(channelId)
+    } catch (error) {
+      return notify(apiErrorMessage(error))
+    }
+    m = messages.value.find((x) => x.id === m.id) ?? m
+  }
   const letter = parseLetter(m.content)
   reading.value = { blocks: letter?.blocks ?? [], strokes: letter?.strokes ?? [], images: letter?.images ?? [], from: m.user, letter: m }
   readerOpen.value = true
@@ -231,6 +240,26 @@ const removeRocket = async () => {
 }
 
 onMounted(load)
+
+// Rafraîchissement : fusées et planètes des autres toutes les 5 s, contenu déjà reçu conservé, en pause onglet caché
+const POLL_MS = 5000
+let polling = false
+const poll = async () => {
+  if (polling || document.hidden || !system.value) return
+  polling = true
+  try {
+    const [fresh, light] = await Promise.all([api.getSystem(channelId), api.getMessages(channelId, true)])
+    const known = new Map(messages.value.map((m) => [m.id, m.content]))
+    const next = light.map((m) => ({ ...m, content: known.get(m.id) || m.content }))
+    if (JSON.stringify(next) !== JSON.stringify(messages.value)) messages.value = next
+    if (JSON.stringify(fresh) !== JSON.stringify(system.value)) system.value = fresh
+  } catch {
+  } finally {
+    polling = false
+  }
+}
+const pollTimer = setInterval(poll, POLL_MS)
+onBeforeUnmount(() => clearInterval(pollTimer))
 
 // En quittant le salon, la scène retrouve son décor
 onBeforeUnmount(() => {

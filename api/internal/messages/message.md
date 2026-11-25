@@ -37,13 +37,17 @@ Erreurs : 400 (corps invalide, contenu vide ou de plus de 100 000 caractères, l
 ## Get messages
 GET **/channel/message?channel=4**
 
-Les 100 derniers messages visibles par l'utilisateur, du plus ancien au plus récent, **classés par date de livraison** :
+Les 300 derniers messages du salon (sans ceux de l'horloge interne), du plus ancien au plus récent, **classés par date
+de livraison**. Toutes les lettres du salon y sont, pour que chaque membre voie les fusées partir, voler et se poser.
+Le contenu n'est rempli que pour :
 - les messages adressés à tout le salon (`recipient_id` null) ;
-- les lettres qu'il a envoyées, avec leur contenu, même si elles sont encore en route ;
-- les lettres qui lui sont adressées : arrivées avec leur contenu ; **en route sans contenu** (`content` vide,
-  `in_transit` vrai) pour qu'il voie qu'une lettre arrive, et quand.
+- les lettres que l'utilisateur a envoyées, même encore en route ;
+- les lettres qui lui sont adressées, **une fois arrivées** (en route : `content` vide, `in_transit` vrai).
 
-Les lettres entre d'autres personnes n'apparaissent jamais.
+Les lettres entre d'autres personnes arrivent toujours avec `content` vide.
+
+`?light=1` : même liste, tous les contenus vides. Le front s'en sert pour se rafraîchir toutes les 5 s sans recharger
+les lettres (qui peuvent contenir des images), et ne demande la liste complète qu'à la lecture d'une lettre.
 
 ```
 [

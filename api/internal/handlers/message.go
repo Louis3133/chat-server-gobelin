@@ -75,7 +75,7 @@ func channelIDFromQuery(writer http.ResponseWriter, request *http.Request) (int6
 	return id, true
 }
 
-// GetMessages renvoie les messages que l'utilisateur peut voir : voir messages.Repo.GetForUser.
+// GetMessages renvoie les messages du salon : voir messages.Repo.GetForUser. ?light=1 : sans aucun contenu.
 func (h messageHandler) GetMessages(writer http.ResponseWriter, request *http.Request) {
 	user, ok := currentUser(writer, request)
 	if !ok {
@@ -90,7 +90,8 @@ func (h messageHandler) GetMessages(writer http.ResponseWriter, request *http.Re
 		return
 	}
 
-	list, err := h.messageRepo.GetForUser(request.Context(), *channel, *user)
+	light := request.URL.Query().Get("light") == "1"
+	list, err := h.messageRepo.GetForUser(request.Context(), *channel, *user, !light)
 	if err != nil {
 		log.Printf("Error getting messages: %s", err.Error())
 		writer.WriteHeader(http.StatusInternalServerError)
