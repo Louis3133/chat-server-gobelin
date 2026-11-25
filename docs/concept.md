@@ -23,7 +23,7 @@
 - [x] Échelle de temps : `LETTER_TIME_SCALE` (1 = réel, 3600 = démo, une heure simulée = une seconde).
 - [x] Qui crée un channel : **seulement les admins** désignés par `ADMIN_USERNAMES`.
 - [ ] Un utilisateur peut être dans plusieurs channels : oui (le schéma le permet, la distance est par salon).
-- [x] Le channel `general` est conservé, affiché « Libre » : ouvert à tous mais plus d'inscription automatique (décision du 25/11/2026, portfolios).
+- [x] Le channel `general` est conservé, affiché « Général » : ouvert à tous mais plus d'inscription automatique (décision du 25/11/2026, portfolios).
 - [x] Salon protégé par un mot de passe (ECNI) : demandé une seule fois, ses planètes restent visibles de loin avec un cadenas.
 - [x] Lettres de groupe : **non** pour le MVP. Un message sans destinataire reste un message de salon, livré tout de suite.
 - [ ] Temps réel : polling pour le MVP, WebSocket ensuite.

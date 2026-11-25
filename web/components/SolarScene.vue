@@ -738,7 +738,7 @@ const isMember = (channel: Channel) =>
 const setSunLabel = (group: THREE.Object3D, channel: Channel | null) => {
   const el = group.userData.label as HTMLElement | undefined
   if (!el) return
-  const text = channel ? channelLabel(channel) : 'Libre'
+  const text = channel ? channelLabel(channel) : 'Général'
   const locked = !!channel?.locked && !isMember(channel)
   if (el.dataset.text === text && el.dataset.locked === String(locked)) return
   el.dataset.text = text
@@ -825,7 +825,7 @@ const updateOrbits = () => {
 }
 updateOrbits()
 
-// Décor de Libre : ses membres, et sa propre planète pendant la personnalisation
+// Décor de Général : ses membres, et sa propre planète pendant la personnalisation
 const generalDecor = () => {
   const general = props.channels.find((c) => keyOf(c) === 'general')
   if (!props.decor || !general) return props.decor
