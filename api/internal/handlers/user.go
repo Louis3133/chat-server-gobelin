@@ -25,15 +25,13 @@ import (
 type userHandler struct {
 	userRepo users.Repo
 	channelRepo channels.Repo
-	general channels.Channel
 	admins map[string]bool // noms d'utilisateur autorisés à supprimer un utilisateur (ADMIN_USERNAMES)
 }
 
-func NewUserHandler(s users.Repo, c channels.Repo, channel channels.Channel, admins map[string]bool) (*userHandler, error) {
+func NewUserHandler(s users.Repo, c channels.Repo, admins map[string]bool) (*userHandler, error) {
 	return &userHandler{
 		userRepo: s,
 		channelRepo: c,
-		general: channel,
 		admins: admins,
 	}, nil
 }
@@ -333,13 +331,6 @@ func (h userHandler) Create(writer http.ResponseWriter, request *http.Request) {
 	user, err := h.userRepo.Create(ctx, req.Username, hash, planet)
 	if err != nil {
 		log.Printf("Error creating user: %s", err.Error())
-		writer.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	err = h.channelRepo.AddUserToChannel(ctx, h.general, *user)
-	if err != nil {
-		log.Printf("Error adding user to general channel: %s", err.Error())
 		writer.WriteHeader(http.StatusInternalServerError)
 		return
 	}

@@ -3,7 +3,7 @@
     <div v-if="open" ref="panel" class="channel-profile scene-panel pixel-frame">
       <div>
         <h2 class="text-heading">{{ title }}</h2>
-        <p class="text-subtitle-medium">{{ members.length }} {{ members.length > 1 ? 'planètes' : 'planète' }}</p>
+        <p class="text-subtitle-medium">{{ members.length }} {{ members.length > 1 ? 'planètes' : 'planète' }}{{ channel.locked ? ' · protégé' : '' }}</p>
       </div>
 
       <template v-if="editing">
@@ -19,16 +19,28 @@
           <button class="pixel-btn" type="button" :disabled="saving || tooLong" @click="save">{{ saving ? '…' : 'Enregistrer' }}</button>
         </div>
       </template>
+      <template v-else-if="editingPassword">
+        <label class="bio-field">
+          <span v-if="passwordDraft" class="bio-field__label">Nouveau mot de passe</span>
+          <input v-model="passwordDraft" type="password" placeholder="Nouveau mot de passe" :readonly="saving" autocomplete="new-password">
+        </label>
+        <div class="channel-profile__edit-actions">
+          <button class="pixel-btn" type="button" :disabled="saving" @click="editingPassword = false">Annuler</button>
+          <button v-if="channel.locked" class="pixel-btn" type="button" :disabled="saving" @click="savePassword('')">Retirer</button>
+          <button class="pixel-btn" type="button" :disabled="saving || !passwordDraft" @click="savePassword(passwordDraft)">{{ saving ? '…' : 'Enregistrer' }}</button>
+        </div>
+      </template>
       <p v-else-if="channel.bio" class="channel-profile__bio text-body" :class="{ 'channel-profile__bio--full': shown }">{{ channel.bio }}</p>
 
-      <div v-if="!editing" class="channel-profile__ctas">
+      <div v-if="!editing && !editingPassword" class="channel-profile__ctas">
         <button class="channel-profile__link" type="button" :aria-expanded="expanded" @click="toggle">
           {{ expanded ? 'Masquer le détail' : 'Voir le détail' }}
         </button>
         <button v-if="editable" class="channel-profile__link" type="button" @click="startEditing">Modifier la bio</button>
+        <button v-if="editable && channel.name !== 'general'" class="channel-profile__link" type="button" @click="startPassword">{{ channel.locked ? 'Changer le mot de passe' : 'Ajouter un mot de passe' }}</button>
       </div>
 
-      <div v-if="shown && !editing" ref="more" class="channel-profile__more">
+      <div v-if="shown && !editing && !editingPassword" ref="more" class="channel-profile__more">
         <hr class="channel-profile__separator">
         <h3 class="text-subtitle-medium">Les planètes</h3>
         <ul class="channel-profile__planets pixel-scroll">
@@ -49,7 +61,7 @@
 
 <script setup lang="ts">
 const props = defineProps<{ channel: Channel, planets: Planet[], editable: boolean }>()
-const emit = defineEmits<{ select: [id: number], saved: [channel: Channel], failed: [message: string] }>()
+const emit = defineEmits<{ select: [id: number], saved: [channel: Channel], password: [channel: Channel], failed: [message: string] }>()
 const open = defineModel<boolean>({ default: false })
 const api = useChatApi()
 
@@ -63,18 +75,17 @@ const editing = ref(false)
 const saving = ref(false)
 const draft = ref('')
 const tooLong = computed(() => draft.value.length > BIO_MAX)
+const editingPassword = ref(false)
+const passwordDraft = ref('')
 
-const title = computed(() => {
-  const name = props.channel.name
-  return name === 'general' ? 'Général' : name.charAt(0).toUpperCase() + name.slice(1)
-})
+const title = computed(() => channelLabel(props.channel))
 
 const members = computed(() => props.planets.filter((p) => p.username !== 'internal-clock'))
 
 watch(open, (value) => {
   if (value) return
   resize?.cancel()
-  expanded.value = shown.value = editing.value = false
+  expanded.value = shown.value = editing.value = editingPassword.value = false
 })
 
 // Ouverture et fermeture animées du détail, comme la fiche d'une planète
@@ -106,6 +117,23 @@ const toggle = async () => {
 const startEditing = () => {
   draft.value = props.channel.bio ?? ''
   editing.value = true
+}
+
+const startPassword = () => {
+  passwordDraft.value = ''
+  editingPassword.value = true
+}
+
+const savePassword = async (password: string) => {
+  saving.value = true
+  try {
+    emit('password', await api.setChannelPassword(props.channel.id, password))
+    editingPassword.value = false
+  } catch (error) {
+    emit('failed', apiErrorMessage(error))
+  } finally {
+    saving.value = false
+  }
 }
 
 const save = async () => {
@@ -169,13 +197,15 @@ const save = async () => {
   opacity: 0.7;
 }
 
-.bio-field textarea {
+.bio-field textarea,
+.bio-field input {
   resize: none;
   color: #000;
   outline: none;
 }
 
-.bio-field textarea::placeholder {
+.bio-field textarea::placeholder,
+.bio-field input::placeholder {
   color: #737373;
   opacity: 1;
 }

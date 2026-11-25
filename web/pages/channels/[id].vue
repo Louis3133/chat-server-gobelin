@@ -1,6 +1,6 @@
 <template>
   <div>
-  <InfoMenu :title="selected?.username ?? system?.channel.name" :back-label="composerOpen ? undefined : selected ? 'Retour au salon' : 'Mes salons'" :back-only="!!selected" @back="back">
+  <InfoMenu :title="selected?.username ?? (system ? channelLabel(system.channel) : '')" :back-label="composerOpen ? undefined : selected ? 'Retour au salon' : 'Mes salons'" :back-only="!!selected" @back="back">
   <template #actions>
     <v-btn icon="mdi-email-edit-outline" color="white" variant="outlined" title="Écrire à…" aria-label="Écrire à…" @click="searchOpen = !searchOpen" />
     <v-autocomplete
@@ -22,7 +22,7 @@
   </template>
   </InfoMenu>
   <RocketPanel v-if="rocketLetter" :letter="rocketLetter" :recipient="rocketLetter.recipient ?? ''" :cancelling="cancelling" @cancel="cancelLetter" @arrived="onArrived" />
-  <ChannelProfile v-if="system" v-model="channelOpen" :channel="system.channel" :planets="system.planets" :editable="canEditChannel" @select="pickFromChannel" @saved="onChannelSaved" @failed="notify" />
+  <ChannelProfile v-if="system" v-model="channelOpen" :channel="system.channel" :planets="system.planets" :editable="canEditChannel" @select="pickFromChannel" @saved="onChannelSaved" @password="onPasswordSaved" @failed="notify" />
   <PlanetProfile v-if="selected" v-model="profileOpen" :planet="selected" :letters="messages" @write="writeSelected" @read="read" @failed="notify" />
   <LetterComposer v-if="selected" v-model="composerOpen" :recipient="selected" :channel-id="channelId" @sent="onSent" @failed="notify" />
   <LetterViewer v-if="reading" v-model="readerOpen" :blocks="reading.blocks" :strokes="reading.strokes" :images="reading.images" :from="reading.from" :removable="canRemove" @remove="removeRocket" />
@@ -56,7 +56,7 @@ const api = useChatApi()
 const channelId = Number(useRoute().params.id)
 
 // La scène plein écran (app.vue) lit cet état partagé
-const { system, messages, selectedId: recipientId, profileOpen, channelOpen, clickedRocket, followedLetter, openedLetter } = useScene()
+const { system, messages, selectedId: recipientId, profileOpen, channelOpen, clickedRocket, followedLetter, openedLetter, channels, meId } = useScene()
 const me = ref<UserMe | null>(null)
 const snackbar = ref(false)
 const snackbarText = ref('')
@@ -83,7 +83,9 @@ const load = async () => {
       api.getSystem(channelId),
       api.getMessages(channelId),
     ])
-  } catch (error) {
+    meId.value = me.value?.id ?? null
+  } catch (error: any) {
+    if (error?.response?.status === 403) return navigateTo('/channels')
     notify(apiErrorMessage(error))
   }
 }
@@ -122,6 +124,13 @@ const pickFromChannel = (id: number) => {
 const onChannelSaved = (channel: Channel) => {
   if (system.value) system.value = { ...system.value, channel: { ...system.value.channel, bio: channel.bio } }
   notify('Bio du salon enregistrée', 'success')
+}
+
+const onPasswordSaved = (channel: Channel) => {
+  const wasLocked = !!system.value?.channel.locked
+  if (system.value) system.value = { ...system.value, channel: { ...system.value.channel, locked: channel.locked } }
+  channels.value = channels.value.map((c) => (c.id === channel.id ? { ...c, locked: channel.locked } : c))
+  notify(!channel.locked ? 'Mot de passe retiré' : wasLocked ? 'Mot de passe changé' : 'Mot de passe ajouté', 'success')
 }
 
 // Retour à l'étape précédente : de la planète au salon, du salon à la liste

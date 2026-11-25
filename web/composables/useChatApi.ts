@@ -4,6 +4,7 @@ export interface Channel {
   owner_id?: number | null
   creation_date?: string
   bio?: string
+  locked?: boolean
   member_ids?: number[]
 }
 
@@ -164,12 +165,12 @@ export const useChatApi = () => {
   const textureUrl = (userId: number, version: number) => `${baseURL}/user/texture?user=${userId}&v=${version}`
 
   // POST /channel -> créer un salon (réservé aux admins : 403 sinon)
-  const createChannel = (name: string) =>
-    request<Channel>('/channel', { method: 'POST', body: { name } })
+  const createChannel = (name: string, password = '') =>
+    request<Channel>('/channel', { method: 'POST', body: { name, password } })
 
-  // POST /channel/enter -> rejoindre un salon existant par son nom
-  const enterChannel = async (channelName: string): Promise<void> => {
-    await request<void>('/channel/enter', { method: 'POST', body: { channel: channelName } })
+  // POST /channel/enter -> rejoindre un salon existant par son nom (mot de passe si le salon est protégé)
+  const enterChannel = async (channelName: string, password = ''): Promise<void> => {
+    await request<void>('/channel/enter', { method: 'POST', body: { channel: channelName, password } })
   }
 
   // DELETE /channel/message/rocket?message=ID -> retirer la fusée d'une lettre reçue (la lettre reste)
@@ -195,6 +196,10 @@ export const useChatApi = () => {
   // PUT /channel/bio?channel=ID -> bio du salon (admins et propriétaire)
   const updateChannelBio = (channelId: number, bio: string) =>
     request<Channel>('/channel/bio', { method: 'PUT', params: { channel: channelId }, body: { bio } })
+
+  // PUT /channel/password?channel=ID -> poser ou retirer (vide) le mot de passe du salon
+  const setChannelPassword = (channelId: number, password: string) =>
+    request<Channel>('/channel/password', { method: 'PUT', params: { channel: channelId }, body: { password } })
 
   // GET /channel/system -> soleil, planètes et distances de l'utilisateur
   const getSystem = (channelId: number) =>
@@ -231,6 +236,7 @@ export const useChatApi = () => {
     deleteUser,
     getSystem,
     updateChannelBio,
+    setChannelPassword,
     getMessages,
     sendMessage,
     removeRocket,

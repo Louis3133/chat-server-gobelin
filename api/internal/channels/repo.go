@@ -15,10 +15,11 @@ type Repo interface {
 	GetByID(ctx context.Context, id int64) (*Channel, error)
 	GetByName(ctx context.Context, name string) (*Channel, error)
 	GetAllChannels(ctx context.Context) ([]Channel, error)
-	Create(ctx context.Context, name string, ownerID *int64) (*Channel, error)
+	Create(ctx context.Context, name string, ownerID *int64, passwordHash []byte) (*Channel, error)
 	AddUserToChannel(ctx context.Context, channel Channel, user users.User) error
 	IsMember(ctx context.Context, channelID int64, userID int64) (bool, error)
 	UpdateBio(ctx context.Context, id int64, bio string) (*Channel, error)
+	SetPassword(ctx context.Context, id int64, passwordHash []byte) (*Channel, error)
 	Delete(ctx context.Context, id int64) error
 }
 
@@ -38,13 +39,14 @@ func (r *repo) GetByUser(ctx context.Context, user users.User) ([]Channel, error
 			a.name,
 			a.owner_id,
 			a.creation_date,
-			a.bio
+			a.bio,
+			a.password_hash IS NOT NULL AS locked
 		FROM channels a
 		JOIN user_channels b ON a.id = b.channel_id
 		WHERE b.user_id = ?`
 
 	query = r.db.Rebind(query)
-	var channels []Channel
+	channels := []Channel{}
 	err := r.db.SelectContext(ctx, &channels, query, user.ID)
 	if err != nil {
 		return channels, fmt.Errorf("Error retrieving channels: %w", err)
@@ -57,7 +59,8 @@ func (r *repo) GetAllChannels(ctx context.Context) ([]Channel, error) {
 			id,
 			name,
 			owner_id,
-			bio
+			bio,
+			password_hash IS NOT NULL AS locked
 		FROM channels`
 
 	query = r.db.Rebind(query)
@@ -91,7 +94,9 @@ func (r *repo) GetByName(ctx context.Context, name string) (*Channel, error) {
 			name,
 			owner_id,
 			creation_date,
-			bio
+			bio,
+			password_hash,
+			password_hash IS NOT NULL AS locked
 		FROM channels
 		WHERE name = ?`
 
@@ -110,7 +115,9 @@ func (r *repo) GetByID(ctx context.Context, id int64) (*Channel, error) {
 			name,
 			owner_id,
 			creation_date,
-			bio
+			bio,
+			password_hash,
+			password_hash IS NOT NULL AS locked
 		FROM channels
 		WHERE id = ?`
 
@@ -123,14 +130,14 @@ func (r *repo) GetByID(ctx context.Context, id int64) (*Channel, error) {
 	return &channel, nil
 }
 
-func (r *repo) Create(ctx context.Context, name string, ownerID *int64) (*Channel, error) {
+func (r *repo) Create(ctx context.Context, name string, ownerID *int64, passwordHash []byte) (*Channel, error) {
 	query := `INSERT INTO channels
-		(name, owner_id, creation_date) VALUES (?, ?, NOW())
-		RETURNING id, name, owner_id, creation_date, bio`
+		(name, owner_id, creation_date, password_hash) VALUES (?, ?, NOW(), ?)
+		RETURNING id, name, owner_id, creation_date, bio, password_hash IS NOT NULL AS locked`
 
 	query = r.db.Rebind(query)
 	var channel Channel
-	err := r.db.GetContext(ctx, &channel, query, name, ownerID)
+	err := r.db.GetContext(ctx, &channel, query, name, ownerID, passwordHash)
 	if err != nil {
 		return nil, fmt.Errorf("Error creating channel: %w", err)
 	}
@@ -169,13 +176,27 @@ func (r *repo) IsMember(ctx context.Context, channelID int64, userID int64) (boo
 
 func (r *repo) UpdateBio(ctx context.Context, id int64, bio string) (*Channel, error) {
 	query := `UPDATE channels SET bio = ? WHERE id = ?
-		RETURNING id, name, owner_id, creation_date, bio`
+		RETURNING id, name, owner_id, creation_date, bio, password_hash IS NOT NULL AS locked`
 
 	query = r.db.Rebind(query)
 	var channel Channel
 	err := r.db.GetContext(ctx, &channel, query, bio, id)
 	if err != nil {
 		return nil, fmt.Errorf("Error updating channel bio: %w", err)
+	}
+	return &channel, nil
+}
+
+// SetPassword pose ou retire (hash nil) le mot de passe du salon
+func (r *repo) SetPassword(ctx context.Context, id int64, passwordHash []byte) (*Channel, error) {
+	query := `UPDATE channels SET password_hash = ? WHERE id = ?
+		RETURNING id, name, owner_id, creation_date, bio, password_hash IS NOT NULL AS locked`
+
+	query = r.db.Rebind(query)
+	var channel Channel
+	err := r.db.GetContext(ctx, &channel, query, passwordHash, id)
+	if err != nil {
+		return nil, fmt.Errorf("Error updating channel password: %w", err)
 	}
 	return &channel, nil
 }
