@@ -73,7 +73,7 @@ le front l'affiche dans la modale ouverte au clic sur le soleil (`web/components
 PUT **/channel/password?channel=ID**
 
 Authentification requise. **Réservé aux admins et au propriétaire du salon** : 403 sinon, 404 si le salon n'existe pas.
-Un mot de passe vide retire la protection ; les membres actuels restent membres. `general` (affiché « Libre ») reste
+Un mot de passe vide retire la protection ; les membres actuels restent membres. `general` (affiché « Général ») reste
 ouvert : 400 si on tente de le protéger.
 
 ```
@@ -87,7 +87,7 @@ PUT **/channel/name?channel=ID**
 
 Authentification requise. **Réservé aux admins et au propriétaire du salon** : 403 sinon, 404 si le salon n'existe pas.
 Espaces autour retirés, 30 caractères au plus, non vide (400). 409 si un autre salon porte déjà ce nom. `general` (affiché
-« Libre ») ne se renomme pas et son nom est réservé (400) : l'API et la scène le retrouvent par son nom.
+« Général ») ne se renomme pas et son nom est réservé (400) : l'API et la scène le retrouvent par son nom.
 
 ```
 {"name": "ECNI 2028"}
@@ -99,5 +99,5 @@ Renvoie le salon mis à jour. Les membres, lettres et distances suivent (tout es
 DELETE **/channel?channel=ID**
 
 **Réservé aux admins** (`ADMIN_USERNAMES`) : 403 sinon. Supprime le salon avec toutes ses lettres, ses membres et ses
-distances, dans une transaction. 400 pour `general` (le salon Libre, gardé en mémoire par l'API), 404 si le salon
+distances, dans une transaction. 400 pour `general` (le salon Général, gardé en mémoire par l'API), 404 si le salon
 n'existe pas. Réponse : 204 sans contenu.

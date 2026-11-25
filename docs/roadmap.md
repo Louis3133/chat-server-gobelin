@@ -76,7 +76,7 @@ Une étape = une session de travail courte. Cocher quand c'est terminé. Lire `d
 - [ ] Essai de bout en bout en local (`docker compose up --build`) puis en prod
 
 ## 5 quinquies. Salons pour les portfolios
-- [x] `general` affiché « Libre », plus d'inscription automatique : chacun choisit son salon dans la vue d'ensemble
+- [x] `general` affiché « Général », plus d'inscription automatique : chacun choisit son salon dans la vue d'ensemble
 - [x] Mot de passe facultatif d'un salon (migration 00012), demandé une seule fois à l'entrée, posé à la création ou depuis la fiche du soleil (admins et propriétaire)
 - [x] Cadenas sur le nom des soleils protégés, fenêtre de mot de passe au clic
 - [x] Renommer un salon depuis la fiche du soleil (`PUT /channel/name`, admins et propriétaire ; `general` garde son nom)

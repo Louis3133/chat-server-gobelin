@@ -345,7 +345,7 @@ type renameRequest struct {
 	Name string `json:"name"`
 }
 
-// Rename : PUT /channel/name?channel=ID, admins et propriétaire ; general garde son nom (affiché « Libre »)
+// Rename : PUT /channel/name?channel=ID, admins et propriétaire ; general garde son nom (affiché « Général »)
 func (h channelHandler) Rename(writer http.ResponseWriter, request *http.Request) {
 	ctx := request.Context()
 
