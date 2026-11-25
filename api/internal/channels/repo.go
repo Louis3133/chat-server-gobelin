@@ -20,6 +20,7 @@ type Repo interface {
 	IsMember(ctx context.Context, channelID int64, userID int64) (bool, error)
 	UpdateBio(ctx context.Context, id int64, bio string) (*Channel, error)
 	SetPassword(ctx context.Context, id int64, passwordHash []byte) (*Channel, error)
+	Rename(ctx context.Context, id int64, name string) (*Channel, error)
 	Delete(ctx context.Context, id int64) error
 }
 
@@ -197,6 +198,19 @@ func (r *repo) SetPassword(ctx context.Context, id int64, passwordHash []byte) (
 	err := r.db.GetContext(ctx, &channel, query, passwordHash, id)
 	if err != nil {
 		return nil, fmt.Errorf("Error updating channel password: %w", err)
+	}
+	return &channel, nil
+}
+
+func (r *repo) Rename(ctx context.Context, id int64, name string) (*Channel, error) {
+	query := `UPDATE channels SET name = ? WHERE id = ?
+		RETURNING id, name, owner_id, creation_date, bio, password_hash IS NOT NULL AS locked`
+
+	query = r.db.Rebind(query)
+	var channel Channel
+	err := r.db.GetContext(ctx, &channel, query, name, id)
+	if err != nil {
+		return nil, fmt.Errorf("Error renaming channel: %w", err)
 	}
 	return &channel, nil
 }
