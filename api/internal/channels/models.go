@@ -3,6 +3,8 @@ package channels
 // MaxBio est alignée sur la contrainte de la migration 00011.
 const MaxBio = 500
 
+const MaxName = 30
+
 type Channel struct {
 	Name string `json:"name"`
 	ID int64    `json:"id"`

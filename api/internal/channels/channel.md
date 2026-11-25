@@ -82,6 +82,19 @@ ouvert : 400 si on tente de le protéger.
 
 Renvoie le salon mis à jour (`locked`).
 
+## Renommer un salon
+PUT **/channel/name?channel=ID**
+
+Authentification requise. **Réservé aux admins et au propriétaire du salon** : 403 sinon, 404 si le salon n'existe pas.
+Espaces autour retirés, 30 caractères au plus, non vide (400). 409 si un autre salon porte déjà ce nom. `general` (affiché
+« Libre ») ne se renomme pas et son nom est réservé (400) : l'API et la scène le retrouvent par son nom.
+
+```
+{"name": "ECNI 2028"}
+```
+
+Renvoie le salon mis à jour. Les membres, lettres et distances suivent (tout est lié à l'id du salon).
+
 ## Delete Channel
 DELETE **/channel?channel=ID**
 

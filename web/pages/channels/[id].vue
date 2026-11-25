@@ -22,7 +22,7 @@
   </template>
   </InfoMenu>
   <RocketPanel v-if="rocketLetter" :letter="rocketLetter" :recipient="rocketLetter.recipient ?? ''" :cancelling="cancelling" @cancel="cancelLetter" @arrived="onArrived" />
-  <ChannelProfile v-if="system" v-model="channelOpen" :channel="system.channel" :planets="system.planets" :editable="canEditChannel" @select="pickFromChannel" @saved="onChannelSaved" @password="onPasswordSaved" @failed="notify" />
+  <ChannelProfile v-if="system" v-model="channelOpen" :channel="system.channel" :planets="system.planets" :editable="canEditChannel" @select="pickFromChannel" @saved="onChannelSaved" @password="onPasswordSaved" @renamed="onRenamed" @failed="notify" />
   <PlanetProfile v-if="selected" v-model="profileOpen" :planet="selected" :letters="messages" @write="writeSelected" @read="read" @failed="notify" />
   <LetterComposer v-if="selected" v-model="composerOpen" :recipient="selected" :channel-id="channelId" @sent="onSent" @failed="notify" />
   <LetterViewer v-if="reading" v-model="readerOpen" :blocks="reading.blocks" :strokes="reading.strokes" :images="reading.images" :from="reading.from" :removable="canRemove" @remove="removeRocket" />
@@ -124,6 +124,12 @@ const pickFromChannel = (id: number) => {
 const onChannelSaved = (channel: Channel) => {
   if (system.value) system.value = { ...system.value, channel: { ...system.value.channel, bio: channel.bio } }
   notify('Bio du salon enregistrée', 'success')
+}
+
+const onRenamed = (channel: Channel) => {
+  if (system.value) system.value = { ...system.value, channel: { ...system.value.channel, name: channel.name } }
+  channels.value = channels.value.map((c) => (c.id === channel.id ? { ...c, name: channel.name } : c))
+  notify(`Salon renommé en « ${channelLabel(channel)} »`, 'success')
 }
 
 const onPasswordSaved = (channel: Channel) => {

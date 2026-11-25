@@ -341,6 +341,93 @@ func (h channelHandler) SetPassword(writer http.ResponseWriter, request *http.Re
 	writer.Write(result)
 }
 
+type renameRequest struct {
+	Name string `json:"name"`
+}
+
+// Rename : PUT /channel/name?channel=ID, admins et propriétaire ; general garde son nom (affiché « Libre »)
+func (h channelHandler) Rename(writer http.ResponseWriter, request *http.Request) {
+	ctx := request.Context()
+
+	user, ok := currentUser(writer, request)
+	if !ok {
+		return
+	}
+
+	channelID, ok := channelIDFromQuery(writer, request)
+	if !ok {
+		return
+	}
+
+	var req renameRequest
+	if err := json.NewDecoder(request.Body).Decode(&req); err != nil {
+		http.Error(writer, "invalid body", http.StatusBadRequest)
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
+		http.Error(writer, "name required", http.StatusBadRequest)
+		return
+	}
+	if utf8.RuneCountInString(req.Name) > channels.MaxName {
+		http.Error(writer, fmt.Sprintf("name must be at most %d characters", channels.MaxName), http.StatusBadRequest)
+		return
+	}
+	if strings.EqualFold(req.Name, "general") {
+		http.Error(writer, "This name is reserved", http.StatusBadRequest)
+		return
+	}
+
+	channel, err := h.channelRepo.GetByID(ctx, channelID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(writer, "Channel not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("Error finding channel: %s", err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	isOwner := channel.OwnerID != nil && *channel.OwnerID == user.ID
+	if !h.admins[user.Username] && !isOwner {
+		http.Error(writer, "Forbidden", http.StatusForbidden)
+		return
+	}
+	if channel.Name == "general" {
+		http.Error(writer, "The general channel cannot be renamed", http.StatusBadRequest)
+		return
+	}
+
+	existing, err := h.channelRepo.GetByName(ctx, req.Name)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		log.Printf("Error finding channel: %s", err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if existing != nil && existing.ID != channel.ID {
+		http.Error(writer, "Name already taken", http.StatusConflict)
+		return
+	}
+
+	updated, err := h.channelRepo.Rename(ctx, channelID, req.Name)
+	if err != nil {
+		log.Printf("Error renaming channel: %s", err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	log.Printf("Channel %d renamed by %s", channelID, user.Username)
+
+	result, err := json.Marshal(updated)
+	if err != nil {
+		log.Printf("Error marshaling value: %s", err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	writer.Write(result)
+}
+
 // Delete : DELETE /channel?channel=ID, admins uniquement, general protégé
 func (h channelHandler) Delete(writer http.ResponseWriter, request *http.Request) {
 	ctx := request.Context()

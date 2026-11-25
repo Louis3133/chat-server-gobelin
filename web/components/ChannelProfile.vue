@@ -19,6 +19,16 @@
           <button class="pixel-btn" type="button" :disabled="saving || tooLong" @click="save">{{ saving ? '…' : 'Enregistrer' }}</button>
         </div>
       </template>
+      <template v-else-if="editingName">
+        <label class="bio-field">
+          <span v-if="nameDraft" class="bio-field__label">Nom du salon</span>
+          <input v-model="nameDraft" placeholder="Nom du salon" :maxlength="NAME_MAX" :readonly="saving" autocomplete="off" spellcheck="false">
+        </label>
+        <div class="channel-profile__edit-actions">
+          <button class="pixel-btn" type="button" :disabled="saving" @click="editingName = false">Annuler</button>
+          <button class="pixel-btn" type="button" :disabled="saving || !nameDraft.trim() || nameDraft.trim() === channel.name" @click="saveName">{{ saving ? '…' : 'Enregistrer' }}</button>
+        </div>
+      </template>
       <template v-else-if="editingPassword">
         <label class="bio-field">
           <span v-if="passwordDraft" class="bio-field__label">Nouveau mot de passe</span>
@@ -32,15 +42,16 @@
       </template>
       <p v-else-if="channel.bio" class="channel-profile__bio text-body" :class="{ 'channel-profile__bio--full': shown }">{{ channel.bio }}</p>
 
-      <div v-if="!editing && !editingPassword" class="channel-profile__ctas">
+      <div v-if="!editing && !editingPassword && !editingName" class="channel-profile__ctas">
         <button class="channel-profile__link" type="button" :aria-expanded="expanded" @click="toggle">
           {{ expanded ? 'Masquer le détail' : 'Voir le détail' }}
         </button>
         <button v-if="editable" class="channel-profile__link" type="button" @click="startEditing">Modifier la bio</button>
+        <button v-if="editable && channel.name !== 'general'" class="channel-profile__link" type="button" @click="startName">Renommer le salon</button>
         <button v-if="editable && channel.name !== 'general'" class="channel-profile__link" type="button" @click="startPassword">{{ channel.locked ? 'Changer le mot de passe' : 'Ajouter un mot de passe' }}</button>
       </div>
 
-      <div v-if="shown && !editing && !editingPassword" ref="more" class="channel-profile__more">
+      <div v-if="shown && !editing && !editingPassword && !editingName" ref="more" class="channel-profile__more">
         <hr class="channel-profile__separator">
         <h3 class="text-subtitle-medium">Les planètes</h3>
         <ul class="channel-profile__planets pixel-scroll">
@@ -61,7 +72,7 @@
 
 <script setup lang="ts">
 const props = defineProps<{ channel: Channel, planets: Planet[], editable: boolean }>()
-const emit = defineEmits<{ select: [id: number], saved: [channel: Channel], password: [channel: Channel], failed: [message: string] }>()
+const emit = defineEmits<{ select: [id: number], saved: [channel: Channel], password: [channel: Channel], renamed: [channel: Channel], failed: [message: string] }>()
 const open = defineModel<boolean>({ default: false })
 const api = useChatApi()
 
@@ -77,6 +88,9 @@ const draft = ref('')
 const tooLong = computed(() => draft.value.length > BIO_MAX)
 const editingPassword = ref(false)
 const passwordDraft = ref('')
+const NAME_MAX = 30
+const editingName = ref(false)
+const nameDraft = ref('')
 
 const title = computed(() => channelLabel(props.channel))
 
@@ -85,7 +99,7 @@ const members = computed(() => props.planets.filter((p) => p.username !== 'inter
 watch(open, (value) => {
   if (value) return
   resize?.cancel()
-  expanded.value = shown.value = editing.value = editingPassword.value = false
+  expanded.value = shown.value = editing.value = editingPassword.value = editingName.value = false
 })
 
 // Ouverture et fermeture animées du détail, comme la fiche d'une planète
@@ -117,6 +131,23 @@ const toggle = async () => {
 const startEditing = () => {
   draft.value = props.channel.bio ?? ''
   editing.value = true
+}
+
+const startName = () => {
+  nameDraft.value = props.channel.name
+  editingName.value = true
+}
+
+const saveName = async () => {
+  saving.value = true
+  try {
+    emit('renamed', await api.renameChannel(props.channel.id, nameDraft.value.trim()))
+    editingName.value = false
+  } catch (error: any) {
+    emit('failed', error?.response?.status === 409 ? 'Ce nom est déjà pris' : apiErrorMessage(error))
+  } finally {
+    saving.value = false
+  }
 }
 
 const startPassword = () => {

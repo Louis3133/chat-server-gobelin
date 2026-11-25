@@ -201,6 +201,10 @@ export const useChatApi = () => {
   const setChannelPassword = (channelId: number, password: string) =>
     request<Channel>('/channel/password', { method: 'PUT', params: { channel: channelId }, body: { password } })
 
+  // PUT /channel/name?channel=ID -> renommer le salon (admins et propriétaire ; general garde son nom)
+  const renameChannel = (channelId: number, name: string) =>
+    request<Channel>('/channel/name', { method: 'PUT', params: { channel: channelId }, body: { name } })
+
   // GET /channel/system -> soleil, planètes et distances de l'utilisateur
   const getSystem = (channelId: number) =>
     request<SolarSystem>('/channel/system', { params: { channel: channelId } })
@@ -237,6 +241,7 @@ export const useChatApi = () => {
     getSystem,
     updateChannelBio,
     setChannelPassword,
+    renameChannel,
     getMessages,
     sendMessage,
     removeRocket,
@@ -250,6 +255,7 @@ export const apiErrorMessage = (error: any): string => {
   if (status === 401) return 'Identifiants invalides ou session expirée'
   if (status === 403) return detail || 'Accès refusé'
   if (status === 404) return detail || 'Introuvable'
+  if (status === 409) return detail || 'Conflit'
   if (status === 400) return detail || 'Requête invalide'
   if (status === 413) return detail || 'Fichier trop lourd'
   if (status) return 'Erreur du serveur'
