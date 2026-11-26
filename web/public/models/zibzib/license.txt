@@ -1,0 +1,11 @@
+Model Information:
+* title:	Alien Cat Meme
+* source:	https://sketchfab.com/3d-models/alien-cat-meme-a149d023208e43c5aa670b684c396c7b
+* author:	jinwoobox (https://sketchfab.com/jinwoobox)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Alien Cat Meme" (https://sketchfab.com/3d-models/alien-cat-meme-a149d023208e43c5aa670b684c396c7b) by jinwoobox (https://sketchfab.com/jinwoobox) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

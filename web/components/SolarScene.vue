@@ -257,6 +257,41 @@ const loadRocket = () => {
   })
 }
 
+// Zib Zib : sa tête remplace la sphère, gardée invisible pour le clic, le halo et les fusées
+const ZIBZIB_HEAD_SIZE = 2.3
+let zibzibHead: THREE.Object3D | null = null
+
+const loadZibzibHead = () => {
+  new GLTFLoader().load('/models/zibzib/zibzib.glb', (gltf) => {
+    const model = gltf.scene
+    model.traverse((o) => {
+      if (!(o instanceof THREE.Mesh)) return
+      const material = o.material as THREE.MeshStandardMaterial
+      for (const map of [material.map, material.normalMap, material.roughnessMap, material.metalnessMap]) {
+        if (!map) continue
+        map.magFilter = THREE.NearestFilter
+        map.minFilter = THREE.NearestMipmapNearestFilter
+        map.needsUpdate = true
+      }
+    })
+    const box = new THREE.Box3().setFromObject(model)
+    const size = box.getSize(new THREE.Vector3())
+    model.position.sub(box.getCenter(new THREE.Vector3()))
+    zibzibHead = new THREE.Group().add(model)
+    zibzibHead.scale.setScalar((BASE_SIZE * ZIBZIB_HEAD_SIZE) / Math.max(size.x, size.y, size.z))
+    dressNpc()
+  })
+}
+
+const dressNpc = () => {
+  const node = npcNode()
+  if (!node || !zibzibHead || node.mesh.userData.head) return
+  ;(node.mesh.material as THREE.MeshStandardMaterial).visible = false
+  node.mesh.userData.head = zibzibHead.clone()
+  node.mesh.userData.surface = new Map<number, number>()
+  node.mesh.add(node.mesh.userData.head)
+}
+
 // Fumée : particules carrées, pixelisées par le rendu basse résolution
 const SMOKE_MAX = 400
 const SMOKE_LIFE = 1400
@@ -294,7 +329,33 @@ const spreadOf = (key: string) => {
 }
 const smooth = (t: number) => t * t * (3 - 2 * t)
 const clamp01 = (t: number) => THREE.MathUtils.clamp(t, 0, 1)
-const surfaceOf = (mesh: THREE.Mesh) => (mesh.geometry as THREE.SphereGeometry).parameters.radius * mesh.scale.x
+const sphereSurface = (mesh: THREE.Mesh) => (mesh.geometry as THREE.SphereGeometry).parameters.radius * mesh.scale.x
+
+// Surface de la tête de Zib Zib : mesurée par un rayon vers le centre, une fois par direction (grille en cache)
+const HEAD_BINS = 48
+const headRay = new THREE.Raycaster()
+const surfaceOf = (mesh: THREE.Mesh, dir?: THREE.Vector3) => {
+  const head = mesh.userData.head as THREE.Object3D | undefined
+  const cache = mesh.userData.surface as Map<number, number> | undefined
+  if (!head || !cache || !dir) return sphereSurface(mesh)
+  const local = dir.clone().applyQuaternion(mesh.quaternion.clone().invert())
+  const u = Math.round((Math.atan2(local.z, local.x) / (Math.PI * 2) + 0.5) * HEAD_BINS) % HEAD_BINS
+  const v = Math.round((Math.acos(THREE.MathUtils.clamp(local.y, -1, 1)) / Math.PI) * (HEAD_BINS / 2))
+  const bin = v * HEAD_BINS + u
+  let r = cache.get(bin)
+  if (r === undefined) {
+    const theta = (u / HEAD_BINS - 0.5) * Math.PI * 2
+    const phi = (v / (HEAD_BINS / 2)) * Math.PI
+    const out = new THREE.Vector3(Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta)).applyQuaternion(mesh.quaternion)
+    const far = sphereSurface(mesh) * 4
+    head.updateWorldMatrix(true, true)
+    headRay.set(mesh.position.clone().addScaledVector(out, far), out.negate())
+    const hit = headRay.intersectObject(head, true)[0]
+    r = (hit ? far - hit.distance : sphereSurface(mesh)) / mesh.scale.x
+    cache.set(bin, r)
+  }
+  return r * mesh.scale.x
+}
 
 const fly = (rocket: THREE.Object3D, from: THREE.Mesh, to: THREE.Mesh, progress: number) => {
   const half = (ROCKET_LENGTH / 2) * tweaks.rocketSize
@@ -313,8 +374,8 @@ const fly = (rocket: THREE.Object3D, from: THREE.Mesh, to: THREE.Mesh, progress:
     land = NOSE.clone().applyQuaternion(landed)
   }
 
-  const start = from.position.clone().addScaledVector(launch, surfaceOf(from) + half)
-  const end = to.position.clone().addScaledVector(land, surfaceOf(to) + half)
+  const start = from.position.clone().addScaledVector(launch, surfaceOf(from, launch) + half)
+  const end = to.position.clone().addScaledVector(land, surfaceOf(to, land) + half)
   const reach = start.distanceTo(end) * ROCKET_ARC
   const path = new THREE.CubicBezierCurve3(
     start,
@@ -930,6 +991,7 @@ const syncSystem = () => {
     for (const p of sys.planets) syncPlanet(key, center, p, targets.get(p.id)!, rings)
   }
   if (props.npc) syncPlanet('npc', NPC_POS, props.npc, { pos: new THREE.Vector3(), radius: 0, tilt: 0 }, orbits)
+  dressNpc()
   if (alone) syncPlanet('space', spacePos, alone, { pos: new THREE.Vector3(), radius: 0, tilt: 0 }, orbits)
 }
 
@@ -1449,6 +1511,7 @@ onMounted(() => {
   stars = makeStars()
   scene.add(stars, shootingStars, new THREE.AmbientLight(0xffffff, 1.5), spaceLight, orbits, letters, smoke, selectionHalo, hoverHalo, hoverRing)
   loadRocket()
+  loadZibzibHead()
 
   renderer.domElement.addEventListener('pointerdown', onPointerDown)
   renderer.domElement.addEventListener('click', onClick)
