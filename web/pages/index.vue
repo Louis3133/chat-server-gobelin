@@ -21,6 +21,10 @@
           <span v-if="bio" class="field-label">Ta bio (facultatif)</span>
           <textarea v-model="bio" placeholder="Ta bio (facultatif)" :readonly="loading" maxlength="500" rows="3" />
         </label>
+        <div class="field">
+          <span class="field-label">Ton anniversaire (facultatif)</span>
+          <BirthdayField v-model="birthday" :disabled="loading" />
+        </div>
         <button class="pixel-btn wide" type="submit" :disabled="loading || !pseudo.trim()">{{ loading ? '…' : 'Continuer' }}</button>
       </form>
 
@@ -48,7 +52,7 @@
       </form>
     </div>
 
-    <v-snackbar v-model="snackbar" color="red" :timeout="3000">{{ snackbarText }}</v-snackbar>
+    <v-snackbar v-model="snackbar" color="red" :timeout="3000" location="top">{{ snackbarText }}</v-snackbar>
   </div>
 </template>
 
@@ -64,6 +68,7 @@ const pseudo = ref('')
 const pseudoMax = PSEUDO_MAX
 const pronouns = ref('')
 const bio = ref('')
+const birthday = ref<Birthday | null>(null)
 const snackbar = ref(false)
 const snackbarText = ref('')
 
@@ -107,6 +112,7 @@ const onPseudo = async () => {
     if (pronouns.value.trim() || bio.value.trim()) {
       await api.updateProfile({ planet_name: '', pronouns: pronouns.value, bio: bio.value })
     }
+    if (birthday.value) await api.updateBirthday(birthday.value)
     savePseudo(pseudo.value)
     await navigateTo('/welcome')
   } catch (error) {
@@ -191,7 +197,8 @@ onMounted(async () => {
 }
 
 .field input,
-.field textarea {
+.field textarea,
+.field :deep(select) {
   resize: none;
   color: #000;
   font-size: var(--body-size);

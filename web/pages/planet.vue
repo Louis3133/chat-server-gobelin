@@ -2,9 +2,9 @@
   <div class="planet-editor">
     <header ref="headerEl" class="editor-header pixel-frame">
       <div class="header-row">
-        <v-btn v-if="step === 1" title="Quitter" aria-label="Quitter" @click="navigateTo('/channels')"><img class="pixel-icon" src="/icons/actions/close.svg" alt=""></v-btn>
+        <v-btn v-if="step === 1" title="Quitter" aria-label="Quitter" @click="navigateTo(backTo)"><img class="pixel-icon" src="/icons/actions/close.svg" alt=""></v-btn>
         <v-btn v-else title="Retour" aria-label="Retour" @click="step--"><img class="pixel-icon" src="/icons/actions/back.svg" alt=""></v-btn>
-        <h1 class="text-subtitle">Personnalisation</h1>
+        <h1 class="text-subtitle">{{ forNpc ? 'Zib Zib' : 'Personnalisation' }}</h1>
         <span class="text-body">{{ step }}/{{ STEPS.length }}</span>
       </div>
       <div class="progress">
@@ -119,7 +119,7 @@
         <button v-else class="pixel-btn next" type="button" :disabled="!canContinue || saving" @click="save">{{ saving ? 'Lancement…' : "C'est mon monde" }}</button>
       </div>
     </section>
-    <v-snackbar v-model="snackbar" color="red" :timeout="3000">{{ snackbarText }}</v-snackbar>
+    <v-snackbar v-model="snackbar" color="red" :timeout="3000" location="top">{{ snackbarText }}</v-snackbar>
   </div>
 </template>
 
@@ -127,7 +127,13 @@
 definePageMeta({ middleware: 'auth' })
 
 const api = useChatApi()
-const { decor, customizing, focusArea, meId } = useScene()
+const { decor, customizing, focusArea, meId, npc, system, messages, selectedId } = useScene()
+
+// ?npc=1 : un admin règle la planète de Zib Zib ; ?channel=ID : sur place, dans le salon d'où l'on vient
+const forNpc = useRoute().query.npc === '1'
+const fromChannel = Number(useRoute().query.channel) || null
+const onSite = !forNpc && !!fromChannel && system.value?.channel.id === fromChannel
+const backTo = onSite ? `/channels/${fromChannel}` : '/channels'
 
 const picker = ref<HTMLInputElement>()
 const saving = ref(false)
@@ -243,7 +249,7 @@ const removeTexture = () => {
 }
 
 // Valeurs par défaut de l'API : la planète grise d'un nouveau compte
-const lookOf = (me: UserMe): PlanetLook => ({
+const lookOf = (me: Partial<PlanetLook>): PlanetLook => ({
   planet_color: me.planet_color ?? '#8d9db6',
   planet_size: me.planet_size ?? 0.55,
   planet_rings: me.planet_rings ?? false,
@@ -258,13 +264,14 @@ const save = async () => {
   if (!customizing.value) return
   saving.value = true
   try {
-    if (pending) await api.uploadTexture(pending)
-    else if (removed) await api.deleteTexture()
+    if (pending) await api.uploadTexture(pending, forNpc)
+    else if (removed) await api.deleteTexture(forNpc)
     pending = null
     removed = false
-    await api.updatePlanet(customizing.value.look)
-    await api.updateProfile(profile.value)
-    await navigateTo('/channels')
+    await api.updatePlanet(customizing.value.look, forNpc)
+    const saved = await api.updateProfile(profile.value, forNpc)
+    if (forNpc) npc.value = npcOf([saved])
+    await navigateTo(backTo)
   } catch (error) {
     notify(error)
   } finally {
@@ -278,9 +285,12 @@ onMounted(async () => {
     const [me, users] = await Promise.all([api.getMe(), api.getUsers()])
     meId.value = me.id
     decor.value = buildDecor(users ?? [])
-    profile.value = { planet_name: me.planet_name ?? '', pronouns: me.pronouns ?? '', bio: me.bio ?? '' }
-    const version = me.planet_texture_version ?? 0
-    customizing.value = { id: me.id, look: lookOf(me), texture: version ? api.textureUrl(me.id, version) : null }
+    npc.value = npcOf(users ?? [])
+    const target = forNpc ? users?.find((u) => u.is_npc) : me
+    if (!target || (forNpc && !me.is_admin)) return navigateTo('/channels')
+    profile.value = { planet_name: target.planet_name ?? '', pronouns: target.pronouns ?? '', bio: target.bio ?? '' }
+    const version = target.planet_texture_version ?? 0
+    customizing.value = { id: target.id, look: lookOf(target), texture: version ? api.textureUrl(target.id, version) : null, alone: !forNpc && !onSite }
     if (version) surfaceTab.value = 'image'
   } catch (error) {
     notify(error)
@@ -302,7 +312,14 @@ onMounted(() => {
   measure()
 })
 
+onBeforeRouteLeave((to) => {
+  if (to.path === `/channels/${fromChannel}`) return
+  system.value = null
+  messages.value = []
+})
+
 onBeforeUnmount(() => {
+  selectedId.value = null
   observer.disconnect()
   window.removeEventListener('resize', measure)
   focusArea.value = null

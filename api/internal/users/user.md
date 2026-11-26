@@ -114,6 +114,11 @@ Les espaces autour sont retirés. Réponse 200 : l'utilisateur mis à jour. 400 
 dans `users/models.go`, et contraintes de la migration 00009). Ces champs sont aussi renvoyés par `GET /users`, `GET /me`
 et `GET /channel/system` (donc publics, comme l'apparence).
 
+## Anniversaire
+PUT **/me/birthday** (authentification requise) : `{"month": 3, "day": 14}`, ou `null` pour l'effacer. Jour et mois
+seulement ; 400 si la date n'existe pas (le 29 février est accepté). Réponse 200 : `{"birthday": {...}}`.
+**Privé** : renvoyé uniquement par `GET /me` (`birthday`, `null` sans date), jamais par `GET /users`.
+
 ## Texture de sa planète
 PUT **/me/planet/texture** (authentification requise) : le corps de la requête est l'image elle-même, JPEG ou PNG,
 256 Ko et 1024×1024 au plus (le front l'a déjà réduite en JPEG 256×128). 413 si elle est trop lourde, 400 si ce n'est
@@ -125,10 +130,42 @@ GET **/user/texture?user=ID** : **publique** (le décor de la page de connexion 
 l'image (404 sans texture). `planet_texture_version` (`texture_version` dans `/channel/system`) vaut 0 sans texture
 et change à chaque envoi : le front l'ajoute à l'URL (`&v=N`), ce qui permet un cache navigateur d'un an.
 
+## Zib Zib (PNJ)
+Compte `zibzib` (`is_npc: true`), créé au démarrage de l'API avec le nom de planète « Zib Zib ». Son hash de mot de passe
+est invalide : personne ne peut se connecter à sa place. Il n'est membre d'aucun salon (donc pas de lettres pour l'instant).
+`GET /users` le renvoie avec `is_npc` ; le front l'affiche seul, hors des salons.
+
+**Réservé aux admins** (403 sinon), mêmes corps et réponses que leurs équivalents `/me` :
+PUT **/npc/planet**, PUT **/npc/profile**, PUT et DELETE **/npc/planet/texture**.
+
+GET **/npc/birthday-letter** et PUT **/npc/birthday-letter** `{"text": "..."}` (admins, 600 caractères au plus, non vide) :
+texte de la lettre d'anniversaire, `{pseudo}` remplacé par le nom d'utilisateur. Texte par défaut dans
+`birthdays/models.go`, valeur modifiée dans la table `settings`.
+
+GET **/npc/letters** (authentification requise) : les lettres échangées avec Zib Zib, dans les deux sens, au format des
+lettres de salon (contenu d'une lettre de Zib Zib vide tant qu'elle est en route ; une réponse n'apparaît qu'à son départ). Si son anniversaire tombe aujourd'hui ou dans les 6 jours précédents (heure de
+Paris ; le 29 février fêté le 28 les années non bissextiles) et qu'aucune lettre n'est partie cette année, l'appel en
+envoie une : hors salon (`channel_id = 0`), en vol 1 minute. Une seule par personne et par an (table
+`birthday_letters`). Sa fusée se retire avec `DELETE /channel/message/rocket`.
+
+GET **/npc/mailbox** (authentification requise) : `{"open": true}` si l'on peut écrire à Zib Zib, c'est-à-dire si les
+admins ont écrit sa réponse.
+
+GET **/npc/reply-letter** et PUT **/npc/reply-letter** `{"text": "..."}` (admins, 600 caractères au plus) : texte de la
+réponse de Zib Zib, `{pseudo}` remplacé par le nom d'utilisateur. Vide (par défaut) : la boîte aux lettres est fermée.
+Valeur dans la table `settings` (clé `npc_reply`).
+
+POST **/npc/letter** `{"content": "..."}` (authentification requise) : une lettre à Zib Zib, hors salon (`channel_id = 0`),
+en vol 10 minutes. Sa réponse est enregistrée dans la même transaction, avec le texte du moment : elle part 10 minutes après
+l'arrivée et vole 10 minutes (règles dans `mailbox/models.go`). 409 si la boîte est fermée, 400 si le contenu est vide ou
+dépasse 100 000 caractères, 403 pour le PNJ. Une lettre à Zib Zib ne s'annule pas (`DELETE /channel/message` répond 404).
+Réponse : la lettre envoyée.
+
 ## Delete User
 DELETE **/user?user=ID**
 
 **Réservé aux admins** (`ADMIN_USERNAMES`) : 403 sinon. Supprime l'utilisateur avec ses lettres envoyées et reçues, ses
 adhésions et ses distances, dans une transaction ; les salons qu'il possédait gardent leur contenu (`owner_id` à `null`).
-Son token devient invalide (401). 400 pour `internal-clock` (protégé : l'horloge écrit en son nom), 404 s'il n'existe pas.
+Son token devient invalide (401). 400 pour `internal-clock` (protégé : l'horloge écrit en son nom) et pour le PNJ, 404
+s'il n'existe pas.
 Réponse : 204 sans contenu.

@@ -141,7 +141,7 @@ func (s *Service) Cancel(ctx context.Context, sender users.User, messageID int64
 	}
 	err = tx.GetContext(ctx, &letter,
 		`SELECT channel_id, recipient_id, approached_from FROM messages
-		 WHERE id = $1 AND user_id = $2 AND recipient_id IS NOT NULL AND deliver_at > NOW()
+		 WHERE id = $1 AND user_id = $2 AND recipient_id IS NOT NULL AND channel_id <> 0 AND deliver_at > NOW()
 		 FOR UPDATE`,
 		messageID, sender.ID)
 	if errors.Is(err, sql.ErrNoRows) {

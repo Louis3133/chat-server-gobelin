@@ -11,6 +11,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"chat-gobelin-api/internal/birthdays"
+	"chat-gobelin-api/internal/mailbox"
 	"chat-gobelin-api/internal/handlers"
 	"chat-gobelin-api/internal/users"
 	"chat-gobelin-api/internal/channels"
@@ -99,6 +101,18 @@ func main() {
 	}
 	log.Printf("Internal user: %s (id %d)", internalUser.Username, internalUser.ID)
 
+	var npcID int64
+	npc, err := userRepo.GetNPC(ctx)
+	if err != nil {
+		npc, err = userRepo.CreateNPC(ctx, users.NPCUsername, users.Profile{PlanetName: "Zib Zib"})
+	}
+	if err != nil {
+		log.Printf("WARNING: NPC unavailable: %s", err)
+	} else {
+		npcID = npc.ID
+		log.Printf("NPC: %s (id %d)", npc.Username, npc.ID)
+	}
+
 	generalChannel, _ := channelRepo.GetByName(ctx, "general")
 	if generalChannel == nil {
 		generalChannel, err = channelRepo.Create(ctx, "general", nil, nil)
@@ -126,7 +140,22 @@ func main() {
 		}
 	}()
 
-	userHandler, err := handlers.NewUserHandler(userRepo, channelRepo, admins)
+	userHandler, err := handlers.NewUserHandler(userRepo, channelRepo, admins, npcID)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	birthdayRepo, err := birthdays.NewRepo(db)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	mailboxRepo, err := mailbox.NewRepo(db)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	npcHandler, err := handlers.NewNPCHandler(birthdayRepo, mailboxRepo, admins, npcID)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -159,9 +188,21 @@ func main() {
 	router.HandleFunc("/me", userHandler.Me).Methods(http.MethodGet)
 	router.HandleFunc("/me/planet", userHandler.UpdatePlanet).Methods(http.MethodPut)
 	router.HandleFunc("/me/profile", userHandler.UpdateProfile).Methods(http.MethodPut)
+	router.HandleFunc("/me/birthday", userHandler.UpdateBirthday).Methods(http.MethodPut)
 	router.HandleFunc("/me/planet/texture", userHandler.UploadTexture).Methods(http.MethodPut)
 	router.HandleFunc("/me/planet/texture", userHandler.DeleteTexture).Methods(http.MethodDelete)
 	router.HandleFunc("/user/texture", userHandler.Texture).Methods(http.MethodGet)
+	router.HandleFunc("/npc/planet", userHandler.UpdatePlanet).Methods(http.MethodPut)
+	router.HandleFunc("/npc/profile", userHandler.UpdateProfile).Methods(http.MethodPut)
+	router.HandleFunc("/npc/planet/texture", userHandler.UploadTexture).Methods(http.MethodPut)
+	router.HandleFunc("/npc/planet/texture", userHandler.DeleteTexture).Methods(http.MethodDelete)
+	router.HandleFunc("/npc/letters", npcHandler.Letters).Methods(http.MethodGet)
+	router.HandleFunc("/npc/birthday-letter", npcHandler.BirthdayLetter).Methods(http.MethodGet)
+	router.HandleFunc("/npc/birthday-letter", npcHandler.SetBirthdayLetter).Methods(http.MethodPut)
+	router.HandleFunc("/npc/mailbox", npcHandler.Mailbox).Methods(http.MethodGet)
+	router.HandleFunc("/npc/reply-letter", npcHandler.ReplyLetter).Methods(http.MethodGet)
+	router.HandleFunc("/npc/reply-letter", npcHandler.SetReplyLetter).Methods(http.MethodPut)
+	router.HandleFunc("/npc/letter", npcHandler.SendLetter).Methods(http.MethodPost)
 	router.HandleFunc("/channel", channelHandler.GetAll).Methods(http.MethodGet)
   router.HandleFunc("/channels", channelHandler.GetAll).Methods(http.MethodGet)
 	router.HandleFunc("/channel", channelHandler.Create).Methods(http.MethodPost)

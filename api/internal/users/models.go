@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -29,6 +30,38 @@ type User struct {
 	Planet
 	Profile
 	TextureVersion int64 `db:"planet_texture_version" json:"planet_texture_version"` // 0 : pas de texture importée
+	IsNPC          bool  `db:"is_npc" json:"is_npc"`
+	BirthMonth     *int  `db:"birth_month" json:"-"`
+	BirthDay       *int  `db:"birth_day" json:"-"`
+}
+
+// Anniversaire : jour et mois seulement, jamais renvoyé ailleurs que dans /me
+type Birthday struct {
+	Month int `json:"month"`
+	Day   int `json:"day"`
+}
+
+func (u User) Birthday() *Birthday {
+	if u.BirthMonth == nil || u.BirthDay == nil {
+		return nil
+	}
+	return &Birthday{Month: *u.BirthMonth, Day: *u.BirthDay}
+}
+
+func (b Birthday) Check() error {
+	if b.Month < 1 || b.Month > 12 || b.Day < 1 || b.Day > time.Date(2000, time.Month(b.Month)+1, 0, 0, 0, 0, 0, time.UTC).Day() {
+		return errors.New("birthday must be a valid day and month")
+	}
+	return nil
+}
+
+// FallsOn : le 29 février tombe le 28 les années non bissextiles
+func (b Birthday) FallsOn(t time.Time) bool {
+	month, day := b.Month, b.Day
+	if month == 2 && day == 29 && time.Date(t.Year(), 3, 0, 0, 0, 0, 0, time.UTC).Day() == 28 {
+		day = 28
+	}
+	return int(t.Month()) == month && t.Day() == day
 }
 
 // Planet est l'apparence de la planète : choisie après l'inscription, modifiable ensuite.
@@ -65,6 +98,9 @@ func (p *Profile) Clean() error {
 	}
 	return nil
 }
+
+// NPCUsername : le compte de Zib Zib, créé au démarrage de l'API
+const NPCUsername = "zibzib"
 
 // DefaultPlanet reprend les valeurs par défaut de la base : la planète grise d'un nouveau compte.
 func DefaultPlanet() Planet {

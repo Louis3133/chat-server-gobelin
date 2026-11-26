@@ -2,10 +2,10 @@
   <v-dialog v-model="open" :fullscreen="xs">
     <div class="dialog-wrapper">
       <div class="dialog-content pixel-frame">
-        <div class="letter-content">
+        <div :style="{ background: linesBackground(lines ?? null) }" class="letter-content">
           <TapedImage v-for="image in images" :key="image.id" :image="image" />
           <canvas ref="canvas" class="drawing-layer" width="900" height="1200"></canvas>
-          <div v-for="block in blocks" :key="block.id" :style="{ top: block.top + 'px', left: block.left + 'px', transform: `rotate(${block.rotation}deg)`, fontSize: block.fontSize + 'px', color: block.color }" class="letter-block">
+          <div v-for="block in blocks" :key="block.id" :style="blockStyle(block, lines ?? null)" class="letter-block">
             <p class="letter-text">{{ block.text }}</p>
           </div>
         </div>
@@ -95,10 +95,13 @@
 </style>
 
 <script setup lang="ts">
+import { blockStyle } from '~/composables/letter'
+
 const props = defineProps<{
   blocks: LetterBlock[],
   strokes: Stroke[],
   images: LetterImage[],
+  lines?: LetterLines | null,
   from: string,
   removable?: boolean,
 }>()

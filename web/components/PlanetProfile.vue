@@ -2,11 +2,12 @@
   <Teleport to="body">
     <form v-if="open && settings" class="planet-profile planet-settings scene-panel pixel-frame" @submit.prevent="save">
       <div class="planet-settings__header">
-        <h2 class="text-heading">{{ planet.username }}</h2>
+        <h2 class="text-heading">{{ npc ? title : planet.username }}</h2>
         <button class="pixel-btn planet-settings__validate" type="submit" :disabled="saving" title="Enregistrer" aria-label="Enregistrer">
           <img class="pixel-icon" src="/icons/actions/validate.svg" alt="">
         </button>
       </div>
+      <div class="planet-settings__body pixel-scroll">
       <label class="planet-settings__row">
         <img class="pixel-icon" src="/icons/actions/earth.svg" alt="Nom de la planète">
         <input v-model="draft.planet_name" class="planet-settings__field text-body" placeholder="Nom de ta planète" maxlength="22" :readonly="saving" autocomplete="off">
@@ -19,17 +20,35 @@
         <img class="pixel-icon" src="/icons/actions/bio.svg" alt="Bio">
         <textarea v-model="draft.bio" class="planet-settings__field text-body pixel-scroll" placeholder="Ta bio" maxlength="500" :rows="xs ? 3 : 6" :readonly="saving" />
       </label>
-      <NuxtLink class="pixel-btn planet-settings__customize" to="/planet">Personnaliser ma planète</NuxtLink>
+      <div v-if="!npc" class="planet-settings__row" title="Ton anniversaire">
+        <v-icon class="planet-settings__icon" icon="mdi-cake-variant-outline" />
+        <BirthdayField v-model="draftBirthday" class="planet-settings__field text-body" :disabled="saving" />
+      </div>
+      <label v-else class="planet-settings__row planet-settings__row--bio">
+        <v-icon class="planet-settings__icon" icon="mdi-cake-variant-outline" title="Lettre d'anniversaire" />
+        <textarea v-model="draftLetter" class="planet-settings__field text-body pixel-scroll" placeholder="Lettre d'anniversaire" maxlength="600" :rows="xs ? 3 : 5" :readonly="saving" />
+      </label>
+      <p v-if="npc" class="planet-settings__hint text-body">Envoyée en fusée à chaque anniversaire, {pseudo} devient le nom de la personne.</p>
+      <label v-if="npc" class="planet-settings__row planet-settings__row--bio">
+        <img class="pixel-icon" src="/icons/actions/send.svg" alt="Réponse aux lettres" title="Réponse aux lettres">
+        <textarea v-model="draftReply" class="planet-settings__field text-body pixel-scroll" placeholder="Réponse aux lettres" maxlength="600" :rows="xs ? 3 : 5" :readonly="saving" />
+      </label>
+      <p v-if="npc" class="planet-settings__hint text-body">Envoyée 10 minutes après l'arrivée de chaque lettre, {pseudo} devient le nom de la personne. Vide&nbsp;: personne ne peut écrire à {{ title }}.</p>
+      <NuxtLink class="pixel-btn planet-settings__customize" :to="customizeLink">{{ npc ? 'Personnaliser sa planète' : 'Personnaliser ma planète' }}</NuxtLink>
+      </div>
     </form>
 
     <div v-else-if="open" ref="panel" class="planet-profile scene-panel pixel-frame">
+      <button v-if="npc" class="planet-profile__close" type="button" title="Fermer" aria-label="Fermer" @click="open = false">
+        <img class="pixel-icon" src="/icons/actions/close.svg" alt="">
+      </button>
       <h2 class="planet-profile__title text-heading">
-        {{ planet.planet_name || `Planète de ${planet.username}` }}
+        {{ title }}
         <img class="pixel-icon" src="/icons/actions/earth.svg" alt="">
       </h2>
 
       <ul class="planet-profile__infos">
-        <li>
+        <li v-if="!npc">
           <img class="pixel-icon" src="/icons/actions/pseudo.svg" alt="Pseudo">
           <span class="text-body">{{ planet.me ? `${planet.username} (moi)` : planet.username }}</span>
         </li>
@@ -43,14 +62,19 @@
         </li>
       </ul>
 
-      <div v-if="planet.me" class="planet-profile__ctas">
-        <button class="pixel-btn planet-profile__write" type="button" @click="openSettings">
-          Mes réglages
+      <div v-if="planet.me || npc" class="planet-profile__ctas">
+        <button v-if="npc && npcMailbox" class="pixel-btn planet-profile__write" type="button" @click="emit('write')">
+          Envoyer une lettre
+          <img class="pixel-icon" src="/icons/actions/send.svg" alt="">
+        </button>
+        <button v-if="planet.me || editable" class="pixel-btn planet-profile__write" type="button" @click="openSettings">
+          {{ npc ? 'Réglages' : 'Mes réglages' }}
           <img class="pixel-icon" src="/icons/actions/settings.svg" alt="">
         </button>
       </div>
+      <p v-if="npc && !npcMailbox" class="text-body planet-profile__closed">{{ title }} ne reçoit pas de lettres pour l'instant.</p>
 
-      <div v-else class="planet-profile__ctas">
+      <div v-else-if="!npc" class="planet-profile__ctas">
         <button class="pixel-btn planet-profile__write" type="button" @click="emit('write')">
           Envoyer une lettre
           <img class="pixel-icon" src="/icons/actions/send.svg" alt="">
@@ -60,7 +84,23 @@
         </button>
       </div>
 
-      <div v-if="shown && !planet.me" ref="more" class="planet-profile__more">
+      <div v-if="npc && letters.length" class="planet-profile__more">
+        <hr class="planet-profile__separator">
+        <h3 class="text-subtitle-medium">Tes lettres</h3>
+        <ul class="planet-profile__letters pixel-scroll">
+          <li v-for="m in exchanged" :key="m.id">
+            <button class="letter-item pixel-frame" type="button" :disabled="!readable(m)" @click="emit('read', m)">
+              <PlanetAvatar :planet="m.user_id === planet.id ? planet : myPlanet" />
+              <span class="letter-item__text">
+                <span class="text-body">{{ m.user_id === planet.id ? `Lettre de ${title}` : 'Ta lettre' }}</span>
+                <span class="text-body letter-item__date">{{ status(m) }}</span>
+              </span>
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <div v-if="shown && !planet.me && !npc" ref="more" class="planet-profile__more">
         <hr class="planet-profile__separator">
         <h3 class="text-subtitle-medium">Vos lettres</h3>
         <p v-if="!exchanged.length" class="text-body">Aucune lettre échangée pour l'instant.</p>
@@ -81,7 +121,7 @@
 </template>
 
 <script setup lang="ts">
-const props = defineProps<{ planet: Planet, letters: Message[] }>()
+const props = defineProps<{ planet: Planet, letters: Message[], npc?: boolean, editable?: boolean }>()
 const emit = defineEmits<{ write: [], read: [letter: Message], failed: [message: string] }>()
 const api = useChatApi()
 const { xs } = useDisplay()
@@ -91,7 +131,10 @@ const expanded = ref(false)
 const shown = ref(false)
 const panel = ref<HTMLElement>()
 const more = ref<HTMLElement>()
-const { system, decor } = useScene()
+const { system, decor, npc: npcPlanet, npcMailbox, meId } = useScene()
+const myPlanet = computed(() => system.value?.planets.find((p) => p.me) ?? decor.value?.planets.find((p) => p.id === meId.value))
+const customizeLink = computed(() => (props.npc ? '/planet?npc=1' : system.value ? `/planet?channel=${system.value.channel.id}` : '/planet'))
+const title = computed(() => props.planet.planet_name || (props.npc ? 'Zib Zib' : `Planète de ${props.planet.username}`))
 let resize: Animation | undefined
 
 watch(open, (value) => {
@@ -104,19 +147,40 @@ watch(open, (value) => {
 const settings = ref(false)
 const saving = ref(false)
 const draft = reactive<Profile>({ planet_name: '', pronouns: '', bio: '' })
+const draftBirthday = ref<Birthday | null>(null)
+const draftLetter = ref('')
+const draftReply = ref('')
+let savedBirthday = ''
+let savedLetter = ''
+let savedReply = ''
 
-const openSettings = () => {
+const openSettings = async () => {
   draft.planet_name = props.planet.planet_name ?? ''
   draft.pronouns = props.planet.pronouns ?? ''
   draft.bio = props.planet.bio ?? ''
+  try {
+    if (props.npc) {
+      const [birthday, reply] = await Promise.all([api.getBirthdayLetter(), api.getReplyLetter()])
+      draftLetter.value = savedLetter = birthday.text
+      draftReply.value = savedReply = reply.text
+    }
+    else draftBirthday.value = (await api.getMe()).birthday ?? null
+    savedBirthday = JSON.stringify(draftBirthday.value)
+  } catch (error) {
+    return emit('failed', apiErrorMessage(error))
+  }
   settings.value = true
 }
 
 const save = async () => {
   saving.value = true
   try {
-    const user = await api.updateProfile({ ...draft })
+    const user = await api.updateProfile({ ...draft }, props.npc)
+    if (!props.npc && JSON.stringify(draftBirthday.value) !== savedBirthday) await api.updateBirthday(draftBirthday.value)
+    if (props.npc && draftLetter.value !== savedLetter) await api.setBirthdayLetter(draftLetter.value)
+    if (props.npc && draftReply.value !== savedReply) npcMailbox.value = !!(await api.setReplyLetter(draftReply.value)).text
     const profile = { planet_name: user.planet_name ?? '', pronouns: user.pronouns ?? '', bio: user.bio ?? '' }
+    if (props.npc && npcPlanet.value) npcPlanet.value = { ...npcPlanet.value, ...profile }
     for (const sys of [system, decor]) {
       if (!sys.value) continue
       sys.value = { ...sys.value, planets: sys.value.planets.map((p) => (p.id === props.planet.id ? { ...p, ...profile } : p)) }
@@ -157,6 +221,7 @@ const toggle = async () => {
 
 // Seulement les lettres entre cette personne et moi, les plus récentes d'abord
 const exchanged = computed(() => {
+  if (props.npc) return [...props.letters].sort((a, b) => b.creation_date.localeCompare(a.creation_date))
   const me = system.value?.planets.find((p) => p.me)?.id
   const them = props.planet.id
   return props.letters
@@ -187,6 +252,14 @@ const status = (m: Message) => {
 
 .planet-profile > * {
   flex: none;
+}
+
+.planet-profile__close {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: flex;
+  padding: var(--space-1);
 }
 
 .planet-profile__title {
@@ -334,6 +407,19 @@ const status = (m: Message) => {
   gap: var(--space-3);
 }
 
+.planet-profile > .planet-settings__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.planet-settings__body > * {
+  flex: none;
+}
+
 .planet-settings__header {
   display: flex;
   align-items: center;
@@ -365,6 +451,22 @@ const status = (m: Message) => {
 .planet-settings__row .pixel-icon {
   width: 32px;
   height: 32px;
+}
+
+.planet-settings__icon {
+  flex: none;
+  width: 32px;
+  font-size: 32px;
+}
+
+.planet-settings__hint {
+  margin: 0;
+  opacity: 0.7;
+}
+
+.planet-profile__closed {
+  margin: 0;
+  opacity: 0.7;
 }
 
 .planet-settings__field {

@@ -83,7 +83,7 @@
   </div>
   </template>
   </InfoMenu>
-  <v-snackbar v-model="snackbar" color="red" :timeout="3000">{{ snackbarText }}</v-snackbar>
+  <v-snackbar v-model="snackbar" color="red" :timeout="3000" location="top">{{ snackbarText }}</v-snackbar>
   </div>
 </template>
 

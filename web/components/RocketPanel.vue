@@ -5,7 +5,7 @@
         <h2 class="text-heading">Lettre pour {{ recipient }}</h2>
         <p class="text-subtitle-medium">{{ remaining > 0 ? `Arrivée dans ${formatRemaining(remaining)}` : 'Arrivée imminente' }}</p>
       </div>
-      <v-btn class="rocket-panel__cancel" :loading="cancelling" :disabled="remaining <= 0" @click="emit('cancel')">
+      <v-btn v-if="cancellable" class="rocket-panel__cancel" :loading="cancelling" :disabled="remaining <= 0" @click="emit('cancel')">
         Annuler la lettre
         <template #append><img class="pixel-icon" src="/icons/actions/close.svg" alt=""></template>
       </v-btn>
@@ -14,7 +14,7 @@
 </template>
 
 <script setup lang="ts">
-const props = defineProps<{ letter: Message, recipient: string, cancelling?: boolean }>()
+const props = withDefaults(defineProps<{ letter: Message, recipient: string, cancelling?: boolean, cancellable?: boolean }>(), { cancellable: true })
 const emit = defineEmits<{ cancel: [], arrived: [] }>()
 
 const now = ref(Date.now())

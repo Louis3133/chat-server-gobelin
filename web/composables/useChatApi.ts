@@ -27,18 +27,26 @@ export interface Profile {
   bio: string
 }
 
+// Anniversaire : jour et mois, privé (seulement dans GET /me)
+export interface Birthday {
+  month: number
+  day: number
+}
+
 export interface UserMe extends Partial<PlanetLook>, Partial<Profile> {
   planet_texture_version?: number
   id: number
   username: string
   channels: Channel[]
   is_admin?: boolean
+  birthday?: Birthday | null
 }
 
 export interface PublicUser extends Partial<PlanetLook>, Partial<Profile> {
   planet_texture_version?: number
   id: number
   username: string
+  is_npc?: boolean
 }
 
 export interface Message {
@@ -70,6 +78,7 @@ export interface Planet extends Partial<Profile> {
   spin?: number
   moon?: boolean
   texture_version?: number
+  npc?: boolean
 }
 
 export interface SolarSystem {
@@ -151,15 +160,35 @@ export const useChatApi = () => {
   // GET /me -> profil et liste des salons de l'utilisateur
   const getMe = () => request<UserMe>('/me')
 
+  // npc : la planète de Zib Zib (/npc/..., admins uniquement) au lieu de la sienne (/me/...)
+  const owner = (npc: boolean) => (npc ? '/npc' : '/me')
+
   // PUT /me/planet -> enregistrer l'apparence complète de sa planète
-  const updatePlanet = (look: PlanetLook) => request<PublicUser>('/me/planet', { method: 'PUT', body: look })
+  const updatePlanet = (look: PlanetLook, npc = false) => request<PublicUser>(`${owner(npc)}/planet`, { method: 'PUT', body: look })
 
   // PUT /me/planet/texture -> importer une texture (image déjà réduite), DELETE -> revenir à la roche
-  const uploadTexture = (image: Blob) => request<PublicUser>('/me/planet/texture', { method: 'PUT', body: image })
-  const deleteTexture = () => request<PublicUser>('/me/planet/texture', { method: 'DELETE' })
+  const uploadTexture = (image: Blob, npc = false) => request<PublicUser>(`${owner(npc)}/planet/texture`, { method: 'PUT', body: image })
+  const deleteTexture = (npc = false) => request<PublicUser>(`${owner(npc)}/planet/texture`, { method: 'DELETE' })
 
   // PUT /me/profile -> nom de sa planète, pronoms et bio
-  const updateProfile = (profile: Profile) => request<PublicUser>('/me/profile', { method: 'PUT', body: profile })
+  const updateProfile = (profile: Profile, npc = false) => request<PublicUser>(`${owner(npc)}/profile`, { method: 'PUT', body: profile })
+
+  // PUT /me/birthday -> jour et mois de son anniversaire, null pour l'effacer
+  const updateBirthday = (birthday: Birthday | null) =>
+    request<{ birthday: Birthday | null }>('/me/birthday', { method: 'PUT', body: JSON.stringify(birthday) })
+
+  // GET /npc/letters -> lettres de Zib Zib (la lettre d'anniversaire part à la première visite)
+  const getNpcLetters = () => request<Message[]>('/npc/letters')
+
+  // GET|PUT /npc/birthday-letter -> texte de la lettre d'anniversaire, {pseudo} remplacé (admins)
+  const getBirthdayLetter = () => request<{ text: string }>('/npc/birthday-letter')
+  const setBirthdayLetter = (text: string) => request<{ text: string }>('/npc/birthday-letter', { method: 'PUT', body: { text } })
+
+  // Boîte aux lettres de Zib Zib : ouverte quand les admins ont écrit sa réponse ({pseudo} remplacé)
+  const getNpcMailbox = () => request<{ open: boolean }>('/npc/mailbox')
+  const getReplyLetter = () => request<{ text: string }>('/npc/reply-letter')
+  const setReplyLetter = (text: string) => request<{ text: string }>('/npc/reply-letter', { method: 'PUT', body: { text } })
+  const sendNpcLetter = (content: string) => request<Message>('/npc/letter', { method: 'POST', body: { content } })
 
   // GET /user/texture est public : une simple URL, versionnée pour le cache du navigateur
   const textureUrl = (userId: number, version: number) => `${baseURL}/user/texture?user=${userId}&v=${version}`
@@ -231,6 +260,14 @@ export const useChatApi = () => {
     getMe,
     updatePlanet,
     updateProfile,
+    updateBirthday,
+    getNpcLetters,
+    getBirthdayLetter,
+    setBirthdayLetter,
+    getNpcMailbox,
+    getReplyLetter,
+    setReplyLetter,
+    sendNpcLetter,
     cancelLetter,
     uploadTexture,
     deleteTexture,
