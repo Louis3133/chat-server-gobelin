@@ -91,6 +91,8 @@ Une étape = une session de travail courte. Cocher quand c'est terminé. Lire `d
 - [x] Lettre d'anniversaire de Zib Zib en fusée, une par an, envoyée à la première visite (jour J + 6 jours), texte réglable par les admins
 - [x] Lettres à Zib Zib : 10 min de vol, réponse des admins 10 min après l'arrivée, 10 min de retour ; impossible tant que la réponse est vide (`/npc/letter`, `/npc/mailbox`, `/npc/reply-letter`)
 - [ ] Essai visuel de la planète et de la fusée d'anniversaire dans le navigateur (Chrome headless ne les affiche pas)
+- [x] Tête 3D de Zib Zib à la place de la sphère (`public/models/zibzib/`, CC-BY), fusées posées sur sa surface réelle ; taille, inclinaison, rotation, anneaux et lune toujours réglables, couleur et texture sans effet
+- [x] « Voir le détail » sur la fiche de Zib Zib pour replier ses lettres
 
 ## 5 septies. Éditeur de lettres et personnalisation
 - [x] Retour en arrière et en avant dans l'éditeur (boutons et Ctrl+Z / Ctrl+Maj+Z)

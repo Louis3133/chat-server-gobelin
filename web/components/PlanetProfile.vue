@@ -71,6 +71,9 @@
           {{ npc ? 'Réglages' : 'Mes réglages' }}
           <img class="pixel-icon" src="/icons/actions/settings.svg" alt="">
         </button>
+        <button v-if="npc && letters.length" class="planet-profile__detail" type="button" :aria-expanded="expanded" @click="toggle">
+          {{ expanded ? 'Masquer le détail' : 'Voir le détail' }}
+        </button>
       </div>
       <p v-if="npc && !npcMailbox" class="text-body planet-profile__closed">{{ title }} ne reçoit pas de lettres pour l'instant.</p>
 
@@ -84,7 +87,7 @@
         </button>
       </div>
 
-      <div v-if="npc && letters.length" class="planet-profile__more">
+      <div v-if="shown && npc && letters.length" ref="more" class="planet-profile__more">
         <hr class="planet-profile__separator">
         <h3 class="text-subtitle-medium">Tes lettres</h3>
         <ul class="planet-profile__letters pixel-scroll">
