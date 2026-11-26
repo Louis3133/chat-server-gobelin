@@ -83,6 +83,21 @@ Une étape = une session de travail courte. Cocher quand c'est terminé. Lire `d
 - [ ] En prod : créer le salon ECNI avec son mot de passe
 - [ ] Essai visuel des planètes dans le navigateur (Chrome headless n'affiche pas les planètes, même avant ce changement)
 
+## 5 sexies. Zib Zib, planète PNJ
+- [x] Compte PNJ `zibzib` créé au démarrage (migration 00013 `is_npc`), sans connexion possible ni suppression
+- [x] Planète seule dans le vide, visible et cliquable partout ; fiche sans lettres
+- [x] Réglages admin : nom, pronoms, bio depuis la fiche, apparence via `/planet?npc=1` (`/npc/planet`, `/npc/profile`, `/npc/planet/texture`)
+- [x] Anniversaire (jour et mois, facultatif) à l'inscription et dans « Mes réglages » (migration 00014, `PUT /me/birthday`)
+- [x] Lettre d'anniversaire de Zib Zib en fusée, une par an, envoyée à la première visite (jour J + 6 jours), texte réglable par les admins
+- [x] Lettres à Zib Zib : 10 min de vol, réponse des admins 10 min après l'arrivée, 10 min de retour ; impossible tant que la réponse est vide (`/npc/letter`, `/npc/mailbox`, `/npc/reply-letter`)
+- [ ] Essai visuel de la planète et de la fusée d'anniversaire dans le navigateur (Chrome headless ne les affiche pas)
+
+## 5 septies. Éditeur de lettres et personnalisation
+- [x] Retour en arrière et en avant dans l'éditeur (boutons et Ctrl+Z / Ctrl+Maj+Z)
+- [x] Lignes enregistrées dans la lettre, interligne et opacité réglables, texte calé sur les lignes
+- [x] Personnalisation sur place depuis un salon (caméra inchangée), sinon planète seule devant la caméra
+- [x] Panneau de la fusée ouvert au départ d'une lettre, notifications au style des panneaux
+
 ## 6. Finitions
 - [x] Temps réel par polling : page du salon rafraîchie toutes les 5 s (`?light=1`, sans contenu), en pause onglet caché
 - [x] Les fusées entre deux autres membres sont visibles par tout le salon (sans contenu)

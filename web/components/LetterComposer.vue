@@ -3,12 +3,13 @@
     <div class="dialog-wrapper">
     <div @click.self="selectedId = null" class="dialog-content">
       <div class="letter-header">
-      <div :class="{ hidden: previewing }" class="tools">
+      <div :class="{ hidden: previewing }" class="toolbar">
+      <div class="tools">
         <v-btn :class="{ active: tool === 'draw' }" @click="toggleTool('draw')" aria-label="Dessiner" class="tool-case"><img src="/icons/composer/feather.svg" alt=""></v-btn>
         <v-btn :class="{ active: tool === 'text' }" @click="toggleTool('text')" aria-label="Écrire" class="tool-case"><img src="/icons/composer/text.svg" alt=""></v-btn>
-        <v-btn :class="{ active: showLines }" @click="showLines = !showLines" aria-label="Lignes" class="tool-case"><img src="/icons/composer/rows.svg" alt=""></v-btn>
+        <v-btn :class="{ active: lines }" @click="toggleLines" aria-label="Lignes" class="tool-case"><img src="/icons/composer/rows.svg" alt=""></v-btn>
         <v-btn :class="{ active: tool === 'resize' }" @click="toggleTool('resize')" aria-label="Redimensionner" class="tool-case"><img src="/icons/composer/crop.svg" alt=""></v-btn>
-        <v-btn :class="{ active: paletteOpen }" @click="paletteOpen = !paletteOpen" aria-label="Couleur" class="tool-case"><span class="pipette">
+        <v-btn :class="{ active: paletteOpen }" @click="togglePalette" aria-label="Couleur" class="tool-case"><span class="pipette">
             <img src="/icons/composer/pipette.svg" alt="">
             <svg :fill="color" viewBox="-0.5 -0.5 12 12" shape-rendering="crispEdges" aria-hidden="true" class="pipette-cap">
               <rect x="8" y="1" width="1" height="1" />
@@ -25,11 +26,23 @@
         <v-btn @click="imageInput?.click()" aria-label="Image" class="tool-case"><img src="/icons/composer/image-sharp.svg" alt=""></v-btn>
         <input ref="imageInput" @change="addImage" type="file" accept="image/*" hidden>
       </div>
+      <div class="history">
+        <v-btn :disabled="!canUndo" @click="undo" aria-label="Revenir en arrière" title="Revenir en arrière (Ctrl+Z)" class="tool-case"><img src="/icons/composer/undo.svg" alt=""></v-btn>
+        <v-btn :disabled="!canRedo" @click="redo" aria-label="Revenir en avant" title="Revenir en avant (Ctrl+Maj+Z)" class="tool-case"><img src="/icons/composer/redo.svg" alt=""></v-btn>
+      </div>
+      </div>
       <h2 v-if="previewing" class="preview-label text-heading">Ça te plaît&nbsp;?</h2>
-      <div v-if="tool === 'draw' && !paletteOpen && !previewing" class="palette widths pixel-frame">
+      <div v-if="tool === 'draw' && !paletteOpen && !linesOpen && !previewing" class="palette widths pixel-frame">
         <button v-for="width in STROKE_WIDTHS" :key="width" :class="{ current: width === strokeWidth }" :aria-label="`Épaisseur ${width}`" @click="strokeWidth = width" class="swatch width">
           <span :style="{ width: width + 'px', height: width + 'px', background: color }" class="width-dot"></span>
         </button>
+      </div>
+      <div v-if="linesOpen && lines && !previewing" @change="commit" class="palette lines-panel pixel-frame">
+        <span class="text-caption">Interligne</span>
+        <PixelSlider :model-value="lines.spacing" @update:model-value="setSpacing" :min="LINES_SPACING.min" :max="LINES_SPACING.max" :step="4" label="Interligne" />
+        <span class="text-caption">Opacité</span>
+        <PixelSlider v-model="lines.opacity" :min="LINES_OPACITY.min" :max="LINES_OPACITY.max" :step="0.05" label="Opacité" />
+        <v-btn @click="removeLines" variant="text" class="lines-remove">Retirer les lignes</v-btn>
       </div>
       <div v-if="paletteOpen && !previewing" class="palette pixel-frame">
         <button v-for="swatch in PALETTE" :key="swatch.value" :class="{ selected: swatch.value === color }" :aria-label="swatch.name" @click="pickColor(swatch.value)" type="button" class="swatch-btn">
@@ -43,7 +56,7 @@
       </div>
       </div>
       <div ref="frame" :style="{ height: `calc(${frameHeight}px + 2 * var(--frame-width))` }" class="letter-frame pixel-frame">
-      <div @click.self="addBlock" :class="{ 'adding-text': tool === 'text', 'drawing': tool === 'draw', 'resizing': tool === 'resize', 'ruled': showLines && !previewing, previewing }" :style="{ transform: `scale(${scale})`, '--handle-scale': 1 / scale }" class="letter-content">
+      <div @click.self="addBlock" :class="{ 'adding-text': tool === 'text', 'drawing': tool === 'draw', 'resizing': tool === 'resize', previewing }" :style="{ transform: `scale(${scale})`, '--handle-scale': 1 / scale, background: linesBackground(lines) }" class="letter-content">
         <TapedImage v-for="image in images" :key="image.id" :image="image" :class="{ selected: image.id === selectedId }" @pointerdown="selectedId = image.id; startMove($event, moveTarget(image))" @pointermove="move" @pointerup="stopMove" @pointercancel="stopMove" class="letter-image">
           <span @pointerdown.stop="startRotate($event, rotateTarget(image))" @pointermove="rotate" @pointerup="stopRotate" @pointercancel="stopRotate" class="rotate-handle">↻</span>
           <span @pointerdown.stop @click="removeImage(image)" class="delete-handle">×</span>
@@ -64,11 +77,11 @@
             <span @pointerdown="startResize($event, resizeDrawing(drawing))" @pointermove="resize" @pointerup="stopResize" @pointercancel="stopResize" class="selected-corner bottom right"></span>
           </div>
         </template>
-        <div :class="{ selected: block.id === selectedId }" @pointerdown="selectedId = block.id" v-for="block in texts" :key="block.id" :style="{ top: block.top + 'px', left: block.left + 'px', transform: `rotate(${block.rotation}deg)`, fontSize: block.fontSize + 'px', color: block.color }" class="letter-block">
+        <div :class="{ selected: block.id === selectedId }" @pointerdown="selectedId = block.id" v-for="block in texts" :key="`${block.id}-${generation}`" :style="blockStyle(block, lines)" class="letter-block">
           <p @blur="updateText(block, $event)" :contenteditable="!previewing" class="letter-text">{{ block.text }}</p>
           <span @pointerdown="startRotate($event, rotateTarget(block))" @pointermove="rotate" @pointerup="stopRotate" @pointercancel="stopRotate" class="rotate-handle">↻</span>
           <span @pointerdown.stop @click="removeText(block)" class="delete-handle">×</span>
-          <span @pointerdown="startMove($event, moveTarget(block))" @pointermove="move" @pointerup="stopMove" @pointercancel="stopMove" class="move-handle">+</span>
+          <span @pointerdown="startMove($event, moveText(block))" @pointermove="move" @pointerup="stopMove" @pointercancel="stopMove" class="move-handle">+</span>
           <span @pointerdown="startResize($event, resizeText(block))" @pointermove="resize" @pointerup="stopResize" @pointercancel="stopResize" class="selected-corner top left"></span>
           <span @pointerdown="startResize($event, resizeText(block))" @pointermove="resize" @pointerup="stopResize" @pointercancel="stopResize" class="selected-corner top right"></span>
           <span @pointerdown="startResize($event, resizeText(block))" @pointermove="resize" @pointerup="stopResize" @pointercancel="stopResize" class="selected-corner bottom left"></span>
@@ -125,10 +138,23 @@
   grid-area: 1 / 1;
 }
 
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 16px 56px;
+}
+
 .tools {
   display: grid;
   grid-template-columns: repeat(3, auto);
   gap: 24px;
+}
+
+.history {
+  display: flex;
+  gap: 12px;
 }
 
 .palette {
@@ -149,6 +175,16 @@
 
 .palette .swatch-plus {
   font-size: 18px;
+}
+
+.lines-panel {
+  grid-template-columns: auto 200px;
+  align-items: center;
+  column-gap: 16px;
+}
+
+.lines-remove {
+  grid-column: 1 / -1;
 }
 
 .swatch {
@@ -178,7 +214,7 @@
   outline-offset: -5px;
 }
 
-.tools.hidden {
+.toolbar.hidden {
   visibility: hidden;
 }
 
@@ -412,10 +448,6 @@
   color: white;
 }
 
-.letter-content.ruled {
-  background: linear-gradient(transparent 0 61px, rgba(255, 255, 255, .6) 61px 64px) 40px 0 / calc(100% - 80px) 64px repeat-y;
-}
-
 .letter-content.previewing {
   pointer-events: none;
 }
@@ -430,12 +462,11 @@
 </style>
 
 <script setup lang="ts">
-
+import { LINES_OPACITY, LINES_SPACING, LINES_TEXT_RATIO, blockStyle, lineTop, linesFontSize, nearestLine } from '~/composables/letter'
 
 const selectedId = ref<number | null>(null)
 const tool = ref<'select' | 'text' | 'draw' | 'resize'>('select')
 const previewing = ref(false)
-const showLines = ref(false)
 
 // Color
 
@@ -458,6 +489,11 @@ const paletteOpen = ref(false)
 const STROKE_WIDTHS = [2.5, 4, 8, 14, 22]
 const strokeWidth = ref(2.5)
 
+const togglePalette = () => {
+  paletteOpen.value = !paletteOpen.value
+  linesOpen.value = false
+}
+
 const pickColor = (value: string) => {
   color.value = value
   paletteOpen.value = false
@@ -470,6 +506,46 @@ const pickColor = (value: string) => {
     drawing.strokes.forEach(stroke => { stroke.color = value })
     redraw()
   }
+  commit()
+}
+
+// Lines
+
+const lines = ref<LetterLines | null>(null)
+const linesOpen = ref(false)
+
+const toggleLines = () => {
+  paletteOpen.value = false
+  if (lines.value) {
+    linesOpen.value = !linesOpen.value
+    return
+  }
+  lines.value = { spacing: LINES_SPACING.default, opacity: LINES_OPACITY.default }
+  linesOpen.value = true
+  realignTexts()
+  commit()
+}
+
+const setSpacing = (spacing: number) => {
+  if (!lines.value) return
+  lines.value.spacing = spacing
+  realignTexts()
+}
+
+const realignTexts = () => {
+  if (!lines.value) return
+  const { spacing } = lines.value
+  for (const block of texts.value) {
+    if (!block.ruled) continue
+    block.top = lineTop(nearestLine(block.top, block.fontSize / LINES_TEXT_RATIO), spacing)
+    block.fontSize = linesFontSize(spacing)
+  }
+}
+
+const removeLines = () => {
+  lines.value = null
+  linesOpen.value = false
+  commit()
 }
 
 // Scale
@@ -537,6 +613,7 @@ let moving: Moving | null = null
 const texts = ref<LetterBlock[]>([])
 
 const toggleTool = (name: 'text' | 'draw' | 'resize') => {
+  linesOpen.value = false
   if (tool.value === name) {
     tool.value = 'select'
   } else {
@@ -568,7 +645,17 @@ const addBlock = async (event: MouseEvent) => {
 
   const sheet = event.currentTarget as HTMLElement
   const point = sheetPoint(event)
-  texts.value.push({fontSize:32, id: idCount, top: point.y, left: point.x, text:'', rotation: 0, color: color.value })
+  const spacing = lines.value?.spacing
+  texts.value.push({
+    id: idCount,
+    top: spacing ? lineTop(Math.floor(point.y / spacing), spacing) : point.y,
+    left: point.x,
+    text: '',
+    rotation: 0,
+    fontSize: spacing ? linesFontSize(spacing) : 32,
+    color: color.value,
+    ruled: !!spacing,
+  })
   selectedId.value = idCount
   idCount +=1
 
@@ -588,6 +675,7 @@ const updateText = (block: LetterBlock, event: Event) => {
   } else {
     block.text = text
   }
+  commit()
 }
 
 // Rotate
@@ -645,6 +733,7 @@ const rotateDrawing = (drawing: Drawing) => {
 
 const stopRotate = () => {
   selectedBlock = null
+  commit()
 }
 
 // Move
@@ -675,6 +764,15 @@ const moveTarget = (target: { top: number, left: number }) => {
   }
 }
 
+const moveText = (block: LetterBlock) => {
+  const apply = moveTarget(block)
+
+  return (dx: number, dy: number) => {
+    apply(dx, dy)
+    if (block.ruled && lines.value) block.top = lineTop(nearestLine(block.top, lines.value.spacing), lines.value.spacing)
+  }
+}
+
 const moveDrawing = (drawing: Drawing) => {
   const initial = drawing.strokes.map(stroke => [...stroke.points])
 
@@ -688,6 +786,7 @@ const moveDrawing = (drawing: Drawing) => {
 
 const stopMove = () => {
   moving = null
+  commit()
 }
 
 // Resize
@@ -716,12 +815,14 @@ const resize = (event: PointerEvent) => {
 
 const stopResize = () => {
   resizing = null
+  commit()
 }
 
 const resizeText = (block: LetterBlock) => {
   const initSize = block.fontSize
 
   return (factor: number) => {
+    block.ruled = false
     block.fontSize = Math.min(Math.max(initSize * factor, 8), 120)
   }
 }
@@ -799,7 +900,7 @@ const addImage = async (event: Event) => {
     return
   }
 
-  const used = serializeLetter(texts.value, drawings.value.flatMap(drawing => drawing.strokes), images.value).length
+  const used = serializeLetter(texts.value, drawings.value.flatMap(drawing => drawing.strokes), images.value, lines.value).length
   const src = encodeImage(bitmap, Math.min(IMAGE_MAX_LENGTH, LETTER_MAX_LENGTH - used - 100))
   const ratio = IMAGE_DISPLAY_SIZE / Math.max(bitmap.width, bitmap.height)
   const width = bitmap.width * ratio
@@ -815,22 +916,26 @@ const addImage = async (event: Event) => {
   selectedId.value = idCount
   idCount += 1
   tool.value = 'resize'
+  commit()
 }
 
 const removeText = (block: LetterBlock) => {
   texts.value = texts.value.filter(item => item.id !== block.id)
   selectedId.value = null
+  commit()
 }
 
 const removeDrawing = (drawing: Drawing) => {
   drawings.value = drawings.value.filter(item => item.id !== drawing.id)
   selectedId.value = null
   redraw()
+  commit()
 }
 
 const removeImage = (image: LetterImage) => {
   images.value = images.value.filter(item => item.id !== image.id)
   selectedId.value = null
+  commit()
 }
 
 // Draw
@@ -878,7 +983,9 @@ const extendStroke = (event: PointerEvent) => {
 }
 
 const endStroke = () => {
+  if (!currentStroke) return
   currentStroke = null
+  commit()
 }
 
 const drawingBounds = (drawing: Drawing) => {
@@ -905,6 +1012,83 @@ const drawingStyle = (drawing: Drawing) => {
   return { left: bounds.left + 'px', top: bounds.top + 'px', width: bounds.width + 'px', height: bounds.height + 'px' }
 }
 
+// Undo
+
+const HISTORY_LIMIT = 50
+const generation = ref(0)
+const canUndo = ref(false)
+const canRedo = ref(false)
+
+const snapshot = () => JSON.stringify({ texts: texts.value, drawings: drawings.value, images: images.value, lines: lines.value })
+let history = [snapshot()]
+let future: string[] = []
+
+const updateHistoryState = () => {
+  canUndo.value = history.length > 1
+  canRedo.value = future.length > 0
+}
+
+const commit = () => {
+  const state = snapshot()
+  if (state === history[history.length - 1]) return
+  history.push(state)
+  if (history.length > HISTORY_LIMIT + 1) history.shift()
+  future = []
+  updateHistoryState()
+}
+
+const resetHistory = () => {
+  history = [snapshot()]
+  future = []
+  updateHistoryState()
+}
+
+const restore = (state: string) => {
+  const parsed = JSON.parse(state)
+  texts.value = parsed.texts
+  drawings.value = parsed.drawings
+  images.value = parsed.images
+  lines.value = parsed.lines
+  if (!lines.value) linesOpen.value = false
+  updateHistoryState()
+  selectedId.value = null
+  currentDrawing = null
+  generation.value += 1
+  redraw()
+}
+
+const undo = () => {
+  ;(document.activeElement as HTMLElement | null)?.blur()
+  if (history.length < 2) return
+
+  future.push(history.pop()!)
+  restore(history[history.length - 1]!)
+}
+
+const redo = () => {
+  ;(document.activeElement as HTMLElement | null)?.blur()
+  const state = future.pop()
+  if (!state) return
+
+  history.push(state)
+  restore(state)
+}
+
+const historyShortcut = (event: KeyboardEvent) => {
+  if (!open.value || previewing.value || !(event.metaKey || event.ctrlKey)) return
+  const key = event.key.toLowerCase()
+  const isRedo = (key === 'z' && event.shiftKey) || key === 'y'
+  if (key !== 'z' && !isRedo) return
+  const target = event.target as HTMLElement
+  if (target.isContentEditable || target.closest('input, textarea')) return
+  event.preventDefault()
+  if (isRedo) redo()
+  else undo()
+}
+
+onMounted(() => window.addEventListener('keydown', historyShortcut))
+onBeforeUnmount(() => window.removeEventListener('keydown', historyShortcut))
+
 
 
 const props = defineProps<{
@@ -928,6 +1112,7 @@ const validate = async () => {
   selectedId.value = null
   tool.value = 'select'
   paletteOpen.value = false
+  linesOpen.value = false
   previewing.value = true
 }
 
@@ -936,7 +1121,7 @@ const send = async () => {
   await nextTick()
   if (isEmpty.value) return
 
-  const content = serializeLetter(texts.value, drawings.value.flatMap(drawing => drawing.strokes), images.value)
+  const content = serializeLetter(texts.value, drawings.value.flatMap(drawing => drawing.strokes), images.value, lines.value)
   if (content.length > LETTER_MAX_LENGTH) {
     emit('failed', 'Lettre trop longue')
     return
@@ -944,11 +1129,13 @@ const send = async () => {
 
   sending.value = true
   try {
-    const sent = await api.sendMessage(props.channelId, content, props.recipient.id)
+    const sent = props.recipient.npc ? await api.sendNpcLetter(content) : await api.sendMessage(props.channelId, content, props.recipient.id)
     texts.value = []
     drawings.value = []
     images.value = []
+    lines.value = null
     redraw()
+    resetHistory()
     selectedId.value = null
     open.value = false
     emit('sent', sent)

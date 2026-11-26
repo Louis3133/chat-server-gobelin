@@ -18,12 +18,16 @@ type Repo interface {
 	SetTexture(ctx context.Context, id int64, data []byte) (*User, error)
 	GetTexture(ctx context.Context, id int64) ([]byte, error)
 	Delete(ctx context.Context, id int64) error
+	SetBirthday(ctx context.Context, id int64, birthday *Birthday) (*User, error)
+	GetNPC(ctx context.Context) (*User, error)
+	CreateNPC(ctx context.Context, username string, profile Profile) (*User, error)
 }
 
 // Colonnes de l'apparence, dans l'ordre des champs de Planet, le profil, puis la version de la texture (0 sans texture)
 const planetColumns = `planet_color, planet_size, planet_rings, planet_tilt, planet_ring_color, planet_ring_size, planet_spin, planet_moon,
 	planet_name, pronouns, bio,
-	CASE WHEN planet_texture IS NULL THEN 0 ELSE planet_texture_version END AS planet_texture_version`
+	CASE WHEN planet_texture IS NULL THEN 0 ELSE planet_texture_version END AS planet_texture_version,
+	is_npc, birth_month, birth_day`
 
 type repo struct {
 	db *sqlx.DB
@@ -158,6 +162,52 @@ func (r *repo) GetAll(ctx context.Context) ([]User, error) {
 }
 
 
+// SetBirthday : nil efface la date
+func (r *repo) SetBirthday(ctx context.Context, id int64, birthday *Birthday) (*User, error) {
+	var month, day *int
+	if birthday != nil {
+		month, day = &birthday.Month, &birthday.Day
+	}
+	query := `UPDATE users SET birth_month = ?, birth_day = ?
+		WHERE id = ?
+		RETURNING id, username, `+planetColumns
+
+	query = r.db.Rebind(query)
+	var user User
+	err := r.db.GetContext(ctx, &user, query, month, day, id)
+	if err != nil {
+		return nil, fmt.Errorf("Error updating birthday: %w", err)
+	}
+	return &user, nil
+}
+
+// GetNPC renvoie le PNJ (sql.ErrNoRows s'il n'existe pas encore)
+func (r *repo) GetNPC(ctx context.Context) (*User, error) {
+	query := `SELECT id, username, `+planetColumns+` FROM users WHERE is_npc ORDER BY id LIMIT 1`
+
+	var user User
+	err := r.db.GetContext(ctx, &user, query)
+	if err != nil {
+		return nil, fmt.Errorf("Error retrieving npc: %w", err)
+	}
+	return &user, nil
+}
+
+// CreateNPC crée le PNJ avec un hash invalide : personne ne peut se connecter à sa place
+func (r *repo) CreateNPC(ctx context.Context, username string, profile Profile) (*User, error) {
+	query := `INSERT INTO users (username, password_hash, creation_date, is_npc, planet_name, pronouns, bio)
+		VALUES (?, '!', NOW(), true, ?, ?, ?)
+		RETURNING id, username, `+planetColumns
+
+	query = r.db.Rebind(query)
+	var user User
+	err := r.db.GetContext(ctx, &user, query, username, profile.PlanetName, profile.Pronouns, profile.Bio)
+	if err != nil {
+		return nil, fmt.Errorf("Error creating npc: %w", err)
+	}
+	return &user, nil
+}
+
 // Delete supprime l'utilisateur et son contenu (messages et user_channels sans clé étrangère : à la main)
 func (r *repo) Delete(ctx context.Context, id int64) error {
 	tx, err := r.db.BeginTxx(ctx, nil)
@@ -168,6 +218,7 @@ func (r *repo) Delete(ctx context.Context, id int64) error {
 
 	for _, query := range []string{
 		`DELETE FROM messages WHERE user_id = ?`,
+		`DELETE FROM messages WHERE recipient_id = ? AND channel_id = 0`,
 		`DELETE FROM user_channels WHERE user_id = ?`,
 	} {
 		if _, err := tx.ExecContext(ctx, tx.Rebind(query), id); err != nil {

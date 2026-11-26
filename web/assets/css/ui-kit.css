@@ -39,7 +39,8 @@ body {
 .pixel-corners,
 .pixel-frame,
 .v-card,
-.v-menu > .v-overlay__content {
+.v-menu > .v-overlay__content,
+.v-snackbar .v-snackbar__wrapper {
   --c: var(--frame-width);
   clip-path: polygon(
     0 calc(var(--c) * 3), var(--c) calc(var(--c) * 3), var(--c) calc(var(--c) * 2), calc(var(--c) * 2) calc(var(--c) * 2), calc(var(--c) * 2) var(--c), calc(var(--c) * 3) var(--c), calc(var(--c) * 3) 0,
@@ -52,10 +53,30 @@ body {
 /* Modales et panneaux */
 .pixel-frame,
 .v-card:not(.v-card .v-card),
-.v-menu > .v-overlay__content {
+.v-menu > .v-overlay__content,
+.v-snackbar .v-snackbar__wrapper {
   border: var(--frame-width) solid transparent;
   border-image: url('/pixel-frame.svg') 3 / calc(var(--frame-width) * 3) stretch;
   background: var(--Klaus);
+}
+
+/* Notifications : cadre des panneaux, texte rouge pour une erreur */
+.v-snackbar .v-snackbar__wrapper {
+  border-radius: 0;
+  background: var(--Klaus) !important;
+  color: var(--color-text) !important;
+  box-shadow: none !important;
+}
+
+.v-snackbar .v-snackbar__wrapper.bg-red {
+  color: #ff8a8a !important;
+}
+
+.v-snackbar .v-snackbar__content {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--body-size);
+  font-weight: var(--body-weight);
+  text-align: center;
 }
 
 /* Boutons */

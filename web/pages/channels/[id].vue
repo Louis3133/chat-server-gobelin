@@ -25,8 +25,8 @@
   <ChannelProfile v-if="system" v-model="channelOpen" :channel="system.channel" :planets="system.planets" :editable="canEditChannel" @select="pickFromChannel" @saved="onChannelSaved" @password="onPasswordSaved" @renamed="onRenamed" @failed="notify" />
   <PlanetProfile v-if="selected" v-model="profileOpen" :planet="selected" :letters="messages" @write="writeSelected" @read="read" @failed="notify" />
   <LetterComposer v-if="selected" v-model="composerOpen" :recipient="selected" :channel-id="channelId" @sent="onSent" @failed="notify" />
-  <LetterViewer v-if="reading" v-model="readerOpen" :blocks="reading.blocks" :strokes="reading.strokes" :images="reading.images" :from="reading.from" :removable="canRemove" @remove="removeRocket" />
-  <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">{{ snackbarText }}</v-snackbar>
+  <LetterViewer v-if="reading" v-model="readerOpen" :blocks="reading.blocks" :strokes="reading.strokes" :images="reading.images" :lines="reading.lines" :from="reading.from" :removable="canRemove" @remove="removeRocket" />
+  <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top">{{ snackbarText }}</v-snackbar>
   </div>
 </template>
 
@@ -56,7 +56,7 @@ const api = useChatApi()
 const channelId = Number(useRoute().params.id)
 
 // La scène plein écran (app.vue) lit cet état partagé
-const { system, messages, selectedId: recipientId, profileOpen, channelOpen, clickedRocket, followedLetter, openedLetter, channels, meId } = useScene()
+const { system, messages, selectedId: recipientId, profileOpen, channelOpen, clickedRocket, followedLetter, openedLetter, channels, meId, npcLetters } = useScene()
 const me = ref<UserMe | null>(null)
 const snackbar = ref(false)
 const snackbarText = ref('')
@@ -64,7 +64,7 @@ const snackbarColor = ref('red')
 const composerOpen = ref(false)
 const searchOpen = ref(false)
 const readerOpen = ref(false)
-const reading = ref<{ blocks: LetterBlock[], strokes: Stroke[], images: LetterImage[], from: string, letter: Message } | null>(null)
+const reading = ref<{ blocks: LetterBlock[], strokes: Stroke[], images: LetterImage[], lines: LetterLines | null, from: string, letter: Message } | null>(null)
 
 const selected = computed(() => system.value?.planets.find((p) => p.id === recipientId.value) ?? null)
 
@@ -94,6 +94,7 @@ const onSent = async (sent: Message) => {
   notify(sent.in_transit ? `Lettre partie, arrivée ${formatDate(sent.deliver_at)}` : 'Lettre envoyée', 'success')
   await load()
   followedLetter.value = letterKey(sent)
+  clickedRocket.value = letterKey(sent)
 }
 
 // Écrire à quelqu'un du salon en cherchant son nom
@@ -163,7 +164,7 @@ const read = async (m: Message) => {
     m = messages.value.find((x) => x.id === m.id) ?? m
   }
   const letter = parseLetter(m.content)
-  reading.value = { blocks: letter?.blocks ?? [], strokes: letter?.strokes ?? [], images: letter?.images ?? [], from: m.user, letter: m }
+  reading.value = { blocks: letter?.blocks ?? [], strokes: letter?.strokes ?? [], images: letter?.images ?? [], lines: letter?.lines ?? null, from: m.user, letter: m }
   readerOpen.value = true
 }
 
@@ -172,7 +173,7 @@ const NOSE_OPEN_MS = 700
 const letterFor = (key: string) => messages.value.find((m) => letterKey(m) === key)
 
 watch(openedLetter, async (key) => {
-  if (!key) return
+  if (!key || npcLetters.value.some((m) => letterKey(m) === key)) return
   const wait = new Promise((resolve) => setTimeout(resolve, NOSE_OPEN_MS))
   if (!letterFor(key)?.content) {
     try {
@@ -187,7 +188,7 @@ watch(openedLetter, async (key) => {
   else openedLetter.value = null
 })
 
-watch(readerOpen, (open) => { if (!open) openedLetter.value = null })
+watch(readerOpen, (open) => { if (!open && !npcLetters.value.some((m) => letterKey(m) === openedLetter.value)) openedLetter.value = null })
 
 // Fusée cliquée : son panneau seulement pour sa propre lettre encore en route
 const sound = useSound()
@@ -261,11 +262,18 @@ const poll = async () => {
 const pollTimer = setInterval(poll, POLL_MS)
 onBeforeUnmount(() => clearInterval(pollTimer))
 
-// En quittant le salon, la scène retrouve son décor
+// En quittant le salon, la scène retrouve son décor, sauf pour personnaliser sa planète sur place
+let customizingHere = false
+onBeforeRouteLeave((to) => {
+  customizingHere = to.path === '/planet' && to.query.channel === String(channelId)
+})
+
 onBeforeUnmount(() => {
-  system.value = null
-  messages.value = []
-  recipientId.value = null
+  if (!customizingHere) {
+    system.value = null
+    messages.value = []
+    recipientId.value = null
+  }
   profileOpen.value = false
   channelOpen.value = false
   clickedRocket.value = null

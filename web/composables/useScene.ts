@@ -17,37 +17,54 @@ export const useScene = () => ({
   followedLetter: useState<string | null>('scene-followed-letter', () => null),
   // Fusée posée que le destinataire vient d'ouvrir : son nez reste ouvert tant que la lettre est affichée
   openedLetter: useState<string | null>('scene-opened-letter', () => null),
-  // texture : URL de l'image (importée ou en aperçu), null pour la roche par défaut
-  customizing: useState<{ id: number; look: PlanetLook; texture: string | null } | null>('scene-customizing', () => null),
+  // texture : URL de l'image (importée ou en aperçu), null pour la roche par défaut ; alone : première fois, seule dans le vide
+  customizing: useState<{ id: number; look: PlanetLook; texture: string | null; alone?: boolean } | null>('scene-customizing', () => null),
   // Espace libre entre les panneaux de la personnalisation (px depuis le haut de l'écran) : la planète s'y centre
   focusArea: useState<{ top: number; bottom: number } | null>('scene-focus-area', () => null),
+  // Zib Zib : planète seule, hors des salons, et sa fiche
+  npc: useState<Planet | null>('scene-npc', () => null),
+  npcOpen: useState<boolean>('scene-npc-open', () => false),
+  npcLetters: useState<Message[]>('scene-npc-letters', () => []),
+  // Zib Zib reçoit des lettres seulement quand les admins ont écrit sa réponse
+  npcMailbox: useState<boolean>('scene-npc-mailbox', () => false),
+  isAdmin: useState<boolean | null>('scene-admin', () => null),
 })
 
 // Identifie la fusée d'une lettre, côté scène comme côté pages
 export const letterKey = (m: Message) => `${m.user_id}:${m.recipient_id}:${m.creation_date}`
 
+const toPlanet = (u: PublicUser): Planet => ({
+  id: u.id,
+  username: u.username,
+  planet_name: u.planet_name,
+  pronouns: u.pronouns,
+  bio: u.bio,
+  me: false,
+  distance: null,
+  delay_seconds: null,
+  exchanges: 0,
+  color: u.planet_color,
+  size: u.planet_size,
+  rings: u.planet_rings,
+  tilt: u.planet_tilt,
+  ring_color: u.planet_ring_color,
+  ring_size: u.planet_ring_size,
+  spin: u.planet_spin,
+  moon: u.planet_moon,
+  texture_version: u.planet_texture_version,
+  npc: !!u.is_npc,
+})
+
 // Décor de l'accueil : general vu de l'extérieur
 export const buildDecor = (users: PublicUser[]): SolarSystem => ({
   channel: { id: 0, name: '' },
-  planets: users.filter((u) => u.username !== 'internal-clock').map((u) => ({
-    id: u.id,
-    username: u.username,
-    planet_name: u.planet_name,
-    me: false,
-    distance: null,
-    delay_seconds: null,
-    exchanges: 0,
-    color: u.planet_color,
-    size: u.planet_size,
-    rings: u.planet_rings,
-    tilt: u.planet_tilt,
-    ring_color: u.planet_ring_color,
-    ring_size: u.planet_ring_size,
-    spin: u.planet_spin,
-    moon: u.planet_moon,
-    texture_version: u.planet_texture_version,
-  })),
+  planets: users.filter((u) => u.username !== 'internal-clock' && !u.is_npc).map(toPlanet),
   min_distance: 1,
   max_distance: 10,
   time_scale: 1,
 })
+
+export const npcOf = (users: PublicUser[]): Planet | null => {
+  const u = users.find((x) => x.is_npc)
+  return u ? toPlanet(u) : null
+}

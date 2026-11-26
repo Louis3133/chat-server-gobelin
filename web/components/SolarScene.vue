@@ -44,12 +44,15 @@ const props = defineProps<{
   selectedId: number | null
   followedLetter: string | null
   openedLetter: string | null
-  customizing: { id: number; look: PlanetLook; texture: string | null } | null
+  customizing: { id: number; look: PlanetLook; texture: string | null; alone?: boolean } | null
   focusArea: { top: number; bottom: number } | null
   overview: boolean
   meId: number | null
+  npc: Planet | null
+  npcOpen: boolean
+  npcLetters: Message[]
 }>()
-const emit = defineEmits<{ select: [id: number]; open: [channel: Channel]; sun: []; read: [key: string]; rocket: [key: string | null] }>()
+const emit = defineEmits<{ select: [id: number]; open: [channel: Channel]; sun: []; read: [key: string]; rocket: [key: string | null]; npc: [open: boolean] }>()
 const api = useChatApi()
 
 const container = ref<HTMLDivElement>()
@@ -457,8 +460,8 @@ const makeLabel = (text: string, big = false) => {
 
 // Nom de la planète, pseudo en dessous
 const setPlanetLabel = (el: HTMLElement, p: Planet) => {
-  const username = p.me ? `${p.username} (moi)` : p.username
-  const name = p.planet_name?.trim()
+  const username = p.npc ? '' : p.me ? `${p.username} (moi)` : p.username
+  const name = p.planet_name?.trim() || (p.npc ? 'Zib Zib' : '')
   el.classList.toggle('planet-label--me', p.me)
   if (el.dataset.name === name && el.dataset.username === username) return
   el.dataset.name = name ?? ''
@@ -467,7 +470,7 @@ const setPlanetLabel = (el: HTMLElement, p: Planet) => {
   title.className = 'planet-label__name'
   title.textContent = name || username
   el.replaceChildren(title)
-  if (!name) return
+  if (!name || !username) return
   const sub = document.createElement('span')
   sub.className = 'planet-label__username'
   sub.textContent = username
@@ -558,7 +561,11 @@ const applyLook = (mesh: THREE.Mesh, look: Look) => {
 }
 
 // Personnalisation de sa planète : aperçu en direct, sur sa planète de general
-const customizedNode = () => (props.customizing ? planets.get(`general:${props.customizing.id}`) : undefined)
+const customizedNode = () => {
+  if (!props.customizing) return undefined
+  const { id, alone } = props.customizing
+  return alone ? planets.get(`space:${id}`) : planets.get(`${activeKey}:${id}`) ?? planets.get(`npc:${id}`)
+}
 const previewLook = () => {
   const node = customizedNode()
   if (!node) return
@@ -688,6 +695,35 @@ const layout = (sys: SolarSystem) => {
   return out
 }
 
+// Zib Zib : seule dans le vide, entre Général et les autres salons
+const NPC_POS = new THREE.Vector3(-20, 10, 44)
+const npcNode = () => (props.npc ? planets.get(`npc:${props.npc.id}`) : undefined)
+
+const npcAt = (event: MouseEvent) => {
+  const node = npcNode()
+  return node && rayAt(event).intersectObject(node.mesh, false).length ? `npc:${node.mesh.userData.id}` : null
+}
+
+// Personnalisation hors d'un salon : la planète seule, posée devant la caméra, qui ne bouge pas
+const SPACE_LIGHT_OFFSET = new THREE.Vector3(-6, 3, 8)
+const spacePos = new THREE.Vector3()
+const spaceLight = new THREE.PointLight(0xffffff, 0)
+let snapToCustomized = false
+
+const placeInSpace = () => {
+  const forward = camera.getWorldDirection(new THREE.Vector3())
+  spacePos.copy(camera.position).addScaledVector(forward, customizeDistance())
+  spaceLight.position.copy(spacePos).add(SPACE_LIGHT_OFFSET)
+}
+
+const alonePlanet = () => (props.customizing?.alone ? props.decor?.planets.find((p) => p.id === props.customizing!.id) : undefined)
+
+const openNpc = () => {
+  if (props.customizing) return
+  stopFollowing()
+  emit('npc', true)
+}
+
 // Salons : un soleil chacun, general au centre, chacun peuplé de ses membres
 const keyOf = (c: Channel) => (c.id === 0 || c.name === 'general' ? 'general' : `c${c.id}`)
 
@@ -764,8 +800,10 @@ const setHovered = (group?: THREE.Group) => {
 // Dans un salon : survol et clic d'une planète ou de son nom
 const planetsInteractive = () => !props.overview && !props.customizing
 
+const hoverable = (k: string) => !props.customizing && (k.startsWith('npc:') || planetsInteractive())
+
 const setHoveredPlanet = (k: string | null) => {
-  if (!planetsInteractive()) k = null
+  if (k && !hoverable(k)) k = null
   if (hoveredPlanet === k) return
   if (hoveredPlanet) planets.get(hoveredPlanet)?.label.element.classList.remove('planet-label--pointed')
   hoveredPlanet = k
@@ -825,12 +863,12 @@ const updateOrbits = () => {
 }
 updateOrbits()
 
-// Décor de Général : ses membres, et sa propre planète pendant la personnalisation
+// Décor de Général : ses membres
 const generalDecor = () => {
   const general = props.channels.find((c) => keyOf(c) === 'general')
   if (!props.decor || !general) return props.decor
   const members = new Set(general.member_ids ?? [])
-  return { ...props.decor, planets: props.decor.planets.filter((p) => members.has(p.id) || p.id === props.customizing?.id) }
+  return { ...props.decor, planets: props.decor.planets.filter((p) => members.has(p.id)) }
 }
 
 // Synchronisation avec les données
@@ -840,7 +878,7 @@ const syncSystem = () => {
   activeKey = props.system ? keyOf(props.system.channel) : 'general'
   activeCenter.copy(where.get(activeKey)?.pos ?? ORIGIN)
   if (hoveredSun && !sunPickable(hoveredSun)) setHovered(undefined)
-  fitOverview([...where.values()].map((w) => w.pos))
+  fitOverview([...[...where.values()].map((w) => w.pos), ...(props.npc ? [NPC_POS] : [])])
   if (snapOverview) placeOverview()
 
   for (const [key, group] of suns) {
@@ -873,6 +911,9 @@ const syncSystem = () => {
   }
 
   const wanted = new Set(shown.flatMap(({ key, sys }) => sys.planets.map((p) => `${key}:${p.id}`)))
+  if (props.npc) wanted.add(`npc:${props.npc.id}`)
+  const alone = alonePlanet()
+  if (alone) wanted.add(`space:${alone.id}`)
   for (const [k, node] of planets) {
     if (!wanted.has(k)) {
       removeFromScene(node.mesh)
@@ -888,6 +929,8 @@ const syncSystem = () => {
     const targets = layout(sys)
     for (const p of sys.planets) syncPlanet(key, center, p, targets.get(p.id)!, rings)
   }
+  if (props.npc) syncPlanet('npc', NPC_POS, props.npc, { pos: new THREE.Vector3(), radius: 0, tilt: 0 }, orbits)
+  if (alone) syncPlanet('space', spacePos, alone, { pos: new THREE.Vector3(), radius: 0, tilt: 0 }, orbits)
 }
 
 const syncPlanet = (
@@ -928,7 +971,8 @@ const syncPlanet = (
     label.position.set(0, 1.1, 0)
     label.element.addEventListener('mouseenter', () => setHoveredPlanet(k))
     label.element.addEventListener('mouseleave', () => { if (hoveredPlanet === k) setHoveredPlanet(null) })
-    label.element.addEventListener('click', () => selectPlanet(k))
+    label.element.addEventListener('click', () => (key === 'npc' ? openNpc() : selectPlanet(k)))
+    label.element.classList.toggle('planet-label--npc', key === 'npc')
     mesh.add(label)
     scene.add(mesh)
     node = { mesh, label, key, center: center.clone(), target: t.pos.clone(), me: p.me }
@@ -936,6 +980,7 @@ const syncPlanet = (
   }
   setPlanetLabel(node.label.element, p)
   node.target.copy(t.pos)
+  if (!t.radius) return
   const points = new THREE.Path().absarc(0, 0, t.radius, 0, Math.PI * 2).getSpacedPoints(128)
   const ring = new Line2(new LineGeometry().setPositions(points.flatMap((v) => [v.x, v.y, 0])), orbitMaterial)
   ring.rotation.x = Math.PI / 2 - t.tilt
@@ -945,9 +990,15 @@ const syncPlanet = (
 // Lettres en transit
 const LANDED_MAX = 30
 
+// Ma planète : celle du salon ouvert, sinon la première affichée
+const myNode = () => {
+  if (props.meId == null) return undefined
+  return planets.get(`${activeKey}:${props.meId}`) ?? [...planets.values()].find((n) => n.key !== 'npc' && n.key !== 'space' && n.mesh.userData.id === props.meId)
+}
+
 const syncLetters = () => {
   if (!ready) return
-  const removed = new Set(props.messages.filter((m) => m.rocket_removed).map(letterKey))
+  const removed = new Set([...props.messages, ...props.npcLetters].filter((m) => m.rocket_removed).map(letterKey))
   for (const dot of letters.children) {
     if (!removed.has(dot.userData.key)) continue
     poof(dot.position, Date.now())
@@ -976,6 +1027,25 @@ const syncLetters = () => {
       start: new Date(m.creation_date).getTime(),
       end: new Date(m.deliver_at).getTime(),
       toMe: m.recipient_id === meId,
+      hinge: dot.getObjectByName('NoseHinge'),
+    }
+    if (dot.userData.hinge && dot.userData.key === props.openedLetter) dot.userData.hinge.rotation.y = NOSE_OPEN
+    letters.add(dot)
+  }
+  const npc = npcNode()
+  const mine = myNode()
+  if (!npc || !mine) return
+  for (const m of props.npcLetters.filter((x) => !x.rocket_removed)) {
+    const toMe = m.user_id === npc.mesh.userData.id
+    const dot = rocketModel?.clone() ?? new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffd54f }))
+    dot.userData = {
+      key: letterKey(m),
+      lastPuff: 0,
+      from: (toMe ? npc : mine).mesh,
+      to: (toMe ? mine : npc).mesh,
+      start: new Date(m.creation_date).getTime(),
+      end: new Date(m.deliver_at).getTime(),
+      toMe,
       hinge: dot.getObjectByName('NoseHinge'),
     }
     if (dot.userData.hinge && dot.userData.key === props.openedLetter) dot.userData.hinge.rotation.y = NOSE_OPEN
@@ -1012,11 +1082,11 @@ const lockControls = () => {
 
 // Personnalisation : la plus grande planète possible remplit une part de l'espace libre entre les panneaux
 const CUSTOMIZE_FILL = 0.6
-const customizeDistance = (node: PlanetNode) => {
+const customizeDistance = (node?: PlanetNode) => {
   const area = props.focusArea
   const h = container.value?.clientHeight ?? 0
   if (!area || !h) return cameraViews.customize.distance
-  const largest = (node.mesh.geometry as THREE.SphereGeometry).parameters.radius / BASE_SIZE
+  const largest = node ? (node.mesh.geometry as THREE.SphereGeometry).parameters.radius / BASE_SIZE : 1
   const free = Math.max(area.bottom - area.top, 1)
   return (largest * h) / (CUSTOMIZE_FILL * free * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)))
 }
@@ -1024,6 +1094,15 @@ const customizeDistance = (node: PlanetNode) => {
 let lastCustomized: THREE.Vector3 | null = null
 
 const followSelection = (selected?: PlanetNode, rocket?: THREE.Object3D, customized?: PlanetNode) => {
+  if (customized && snapToCustomized) {
+    snapToCustomized = false
+    snapLift = true
+    placeInSpace()
+    customized.center.copy(spacePos)
+    customized.mesh.position.copy(spacePos)
+    controls.target.copy(spacePos)
+    adjustingZoom = false
+  }
   const wanted = customized ? customized.mesh.position : rocket ? rocket.position : selected ? selected.mesh.position : props.overview ? overviewCenter : activeCenter
   if (customized && lastCustomized) {
     const step = wanted.clone().sub(lastCustomized)
@@ -1059,6 +1138,7 @@ const followSelection = (selected?: PlanetNode, rocket?: THREE.Object3D, customi
 const MOBILE_WIDTH = 600
 const MOBILE_LIFT = 0.22
 let viewLift = 0
+let snapLift = false
 
 const liftView = (focused: boolean, customizing: boolean) => {
   const el = container.value
@@ -1066,7 +1146,8 @@ const liftView = (focused: boolean, customizing: boolean) => {
   const { clientWidth: w, clientHeight: h } = el
   const area = customizing ? props.focusArea : null
   const goal = area ? 0.5 - (area.top + area.bottom) / 2 / h : focused && w < MOBILE_WIDTH ? MOBILE_LIFT : 0
-  viewLift = Math.abs(goal - viewLift) < 0.001 ? goal : THREE.MathUtils.lerp(viewLift, goal, 0.06)
+  viewLift = snapLift || Math.abs(goal - viewLift) < 0.001 ? goal : THREE.MathUtils.lerp(viewLift, goal, 0.06)
+  snapLift = false
   if (viewLift) camera.setViewOffset(w, h, 0, viewLift * h, w, h)
   else camera.clearViewOffset()
 }
@@ -1105,7 +1186,7 @@ const animate = () => {
     node.mesh.position.lerp(node.target.clone().applyAxisAngle(UP, spin).add(node.center), 0.05)
     node.mesh.rotation.y += looks.get(node.mesh.userData.username)?.spin ?? 0.01
     orbitMoon(node.mesh, now)
-    node.label.visible = !props.overview && node.key === activeKey
+    node.label.visible = node.key === 'npc' ? !props.customizing : !props.overview && node.key === activeKey
   }
   for (const dot of letters.children) {
     const { from, to, start, end } = dot.userData
@@ -1121,13 +1202,13 @@ const animate = () => {
   rocketSounds(now)
   ;(smoke.material as THREE.PointsMaterial).size = tweaks.smokeSize
   animateSmoke(now)
-  const selected = props.selectedId != null ? planets.get(`${activeKey}:${props.selectedId}`) : undefined
+  const selected = props.npcOpen ? npcNode() : props.selectedId != null ? planets.get(`${activeKey}:${props.selectedId}`) : undefined
   selectionHalo.visible = !!selected
   if (selected) {
     selectionHalo.position.copy(selected.mesh.position)
     selectionHalo.scale.setScalar(surfaceOf(selected.mesh) * HALO_SIZE * (1 + Math.sin(now / 400) * 0.02))
   }
-  if (hoveredPlanet && (!planets.has(hoveredPlanet) || !planetsInteractive())) setHoveredPlanet(null)
+  if (hoveredPlanet && (!planets.has(hoveredPlanet) || !hoverable(hoveredPlanet))) setHoveredPlanet(null)
   const hovered = hoveredPlanet ? planets.get(hoveredPlanet) : undefined
   hoverHalo.visible = !!hovered && hovered !== selected
   if (hovered) {
@@ -1147,7 +1228,9 @@ const animate = () => {
   }
   const rocket = followedRocket()
   if (followedKey && !rocket) stopFollowing()
-  followSelection(selected, rocket, customizedNode())
+  const customized = customizedNode()
+  const inPlace = customized && !props.customizing?.alone
+  followSelection(inPlace ? customized : selected, rocket, inPlace ? undefined : customized)
   liftView(!!(selected || rocket || customizedNode()), !!customizedNode())
   controls.update()
   hideCoveredLabels()
@@ -1177,16 +1260,24 @@ const onPointerDown = (e: PointerEvent) => { downAt = { x: e.clientX, y: e.clien
 
 const onPointerMove = (event: PointerEvent) => {
   if (props.customizing) return
-  if (props.overview) return setHovered(sunAt(event))
+  const npc = npcAt(event)
+  if (props.overview) {
+    setHoveredPlanet(npc)
+    setHovered(npc ? undefined : sunAt(event))
+    renderer.domElement.style.cursor = npc || hoveredSun ? 'pointer' : ''
+    return
+  }
   const rocket = rocketAt(event)
-  setHoveredPlanet(rocket ? null : planetAt(event))
+  setHoveredPlanet(rocket ? null : planetAt(event) ?? npc)
   setHovered(rocket || hoveredPlanet ? undefined : sunAt(event))
   renderer.domElement.style.cursor = hoveredPlanet || hoveredSun || activeSunAt(event) || readable(rocket) ? 'pointer' : ''
 }
 
 const onClick = (event: MouseEvent) => {
   if (props.customizing || Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y) > 5) return
-  if (props.overview) {
+  if (npcAt(event)) return openNpc()
+  if (props.npcOpen) emit('npc', false)
+  if (props.overview && !rocketAt(event)) {
     const sun = sunAt(event)
     if (sun) openSun(sun)
     return
@@ -1356,7 +1447,7 @@ onMounted(() => {
   lockControls()
 
   stars = makeStars()
-  scene.add(stars, shootingStars, new THREE.AmbientLight(0xffffff, 1.5), orbits, letters, smoke, selectionHalo, hoverHalo, hoverRing)
+  scene.add(stars, shootingStars, new THREE.AmbientLight(0xffffff, 1.5), spaceLight, orbits, letters, smoke, selectionHalo, hoverHalo, hoverRing)
   loadRocket()
 
   renderer.domElement.addEventListener('pointerdown', onPointerDown)
@@ -1450,9 +1541,12 @@ onMounted(() => {
 })
 
 watch(() => [props.system, props.decor, props.channels], () => { syncSystem(); syncLetters() })
-watch(() => props.meId, syncSystem)
+watch(() => props.meId, () => { syncSystem(); syncLetters() })
+watch(() => props.npc, () => { syncSystem(); syncLetters() })
+watch(() => props.npcOpen, () => { adjustingZoom = true; snapOverview = false })
 watch(() => props.system?.channel.id, () => { followedKey = null; adjustingZoom = true; snapOverview = false })
 watch(() => props.messages, syncLetters)
+watch(() => props.npcLetters, syncLetters)
 watch(() => props.followedLetter, (key) => {
   if (!key) return
   followedKey = key
@@ -1463,10 +1557,15 @@ watch(() => props.selectedId, () => { followedKey = null; adjustingZoom = true; 
 watch(() => props.customizing, previewLook, { deep: true })
 watch(() => props.decor, previewLook)
 watch(() => props.customizing?.id, () => {
+  const alone = !!props.customizing?.alone
+  snapOverview = false
+  if (alone && camera) placeInSpace()
+  spaceLight.intensity = alone ? 200 : 0
+  orbits.visible = !alone
+  snapToCustomized = alone
   syncSystem()
   previewLook()
-  adjustingZoom = true
-  snapOverview = false
+  if (!props.customizing || alone) adjustingZoom = true
   if (controls) lockControls()
   setHovered(undefined)
 })
@@ -1544,6 +1643,11 @@ onBeforeUnmount(() => {
   pointer-events: auto;
   cursor: pointer;
 }
+.scene:not(.scene--customizing) :deep(.planet-label--npc:not(.planet-label--covered)) {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
 .scene :deep(.planet-label__name) {
   transition: color 0.15s;
 }

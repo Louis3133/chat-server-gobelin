@@ -26,14 +26,36 @@ type userHandler struct {
 	userRepo users.Repo
 	channelRepo channels.Repo
 	admins map[string]bool // noms d'utilisateur autorisés à supprimer un utilisateur (ADMIN_USERNAMES)
+	npcID int64
 }
 
-func NewUserHandler(s users.Repo, c channels.Repo, admins map[string]bool) (*userHandler, error) {
+func NewUserHandler(s users.Repo, c channels.Repo, admins map[string]bool, npcID int64) (*userHandler, error) {
 	return &userHandler{
 		userRepo: s,
 		channelRepo: c,
 		admins: admins,
+		npcID: npcID,
 	}, nil
+}
+
+// Planète modifiée : la sienne, ou celle du PNJ sous /npc pour les admins
+func (h userHandler) planetOwner(writer http.ResponseWriter, request *http.Request) (int64, bool) {
+	user, ok := currentUser(writer, request)
+	if !ok {
+		return 0, false
+	}
+	if !strings.HasPrefix(request.URL.Path, "/npc/") {
+		return user.ID, true
+	}
+	if !h.admins[user.Username] {
+		http.Error(writer, "Forbidden", http.StatusForbidden)
+		return 0, false
+	}
+	if h.npcID == 0 {
+		http.Error(writer, "NPC not found", http.StatusNotFound)
+		return 0, false
+	}
+	return h.npcID, true
 }
 
 type loginRequest struct {
@@ -65,6 +87,7 @@ type UserPresentation struct {
 	users.Planet
 	users.Profile
 	IsAdmin     bool    `json:"is_admin"`
+	Birthday    *users.Birthday `json:"birthday"`
 }
 
 var JWTKey []byte // défini au démarrage depuis JWT_SECRET (cmd/api/api.go)
@@ -146,6 +169,7 @@ func (h userHandler) Me(writer http.ResponseWriter, request *http.Request) {
 		Planet: user.Planet,
 		Profile: user.Profile,
 		IsAdmin: h.admins[user.Username],
+		Birthday: user.Birthday(),
 	}
 	result, err := json.Marshal(presentation)
 	if err != nil {
@@ -159,7 +183,7 @@ func (h userHandler) Me(writer http.ResponseWriter, request *http.Request) {
 
 // UpdatePlanet : PUT /me/planet, l'apparence complète de sa propre planète
 func (h userHandler) UpdatePlanet(writer http.ResponseWriter, request *http.Request) {
-	user, ok := currentUser(writer, request)
+	id, ok := h.planetOwner(writer, request)
 	if !ok {
 		return
 	}
@@ -176,7 +200,7 @@ func (h userHandler) UpdatePlanet(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 
-	updated, err := h.userRepo.UpdatePlanet(request.Context(), user.ID, planet)
+	updated, err := h.userRepo.UpdatePlanet(request.Context(), id, planet)
 	if err != nil {
 		log.Printf("Error updating planet: %s", err.Error())
 		writer.WriteHeader(http.StatusInternalServerError)
@@ -196,7 +220,7 @@ func (h userHandler) UpdatePlanet(writer http.ResponseWriter, request *http.Requ
 
 // UpdateProfile : PUT /me/profile, le nom de sa planète, ses pronoms et sa bio
 func (h userHandler) UpdateProfile(writer http.ResponseWriter, request *http.Request) {
-	user, ok := currentUser(writer, request)
+	id, ok := h.planetOwner(writer, request)
 	if !ok {
 		return
 	}
@@ -211,7 +235,7 @@ func (h userHandler) UpdateProfile(writer http.ResponseWriter, request *http.Req
 		return
 	}
 
-	updated, err := h.userRepo.UpdateProfile(request.Context(), user.ID, profile)
+	updated, err := h.userRepo.UpdateProfile(request.Context(), id, profile)
 	if err != nil {
 		log.Printf("Error updating profile: %s", err.Error())
 		writer.WriteHeader(http.StatusInternalServerError)
@@ -229,6 +253,34 @@ func (h userHandler) UpdateProfile(writer http.ResponseWriter, request *http.Req
 	writer.Write(result)
 }
 
+// UpdateBirthday : PUT /me/birthday, {"month": 3, "day": 14} ou null pour l'effacer
+func (h userHandler) UpdateBirthday(writer http.ResponseWriter, request *http.Request) {
+	user, ok := currentUser(writer, request)
+	if !ok {
+		return
+	}
+
+	var birthday *users.Birthday
+	if err := json.NewDecoder(request.Body).Decode(&birthday); err != nil {
+		http.Error(writer, "invalid body", http.StatusBadRequest)
+		return
+	}
+	if birthday != nil {
+		if err := birthday.Check(); err != nil {
+			http.Error(writer, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	updated, err := h.userRepo.SetBirthday(request.Context(), user.ID, birthday)
+	if err != nil {
+		log.Printf("Error updating birthday: %s", err.Error())
+		writer.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	writeJSON(writer, map[string]*users.Birthday{"birthday": updated.Birthday()})
+}
+
 // Texture importée : petite image JPEG ou PNG, déjà réduite par le navigateur
 const (
 	maxTextureBytes = 256 << 10
@@ -237,7 +289,7 @@ const (
 
 // UploadTexture : PUT /me/planet/texture, le corps est l'image
 func (h userHandler) UploadTexture(writer http.ResponseWriter, request *http.Request) {
-	user, ok := currentUser(writer, request)
+	id, ok := h.planetOwner(writer, request)
 	if !ok {
 		return
 	}
@@ -256,16 +308,16 @@ func (h userHandler) UploadTexture(writer http.ResponseWriter, request *http.Req
 		http.Error(writer, fmt.Sprintf("texture must be at most %dx%d", maxTextureSide, maxTextureSide), http.StatusBadRequest)
 		return
 	}
-	h.saveTexture(writer, request, user.ID, data)
+	h.saveTexture(writer, request, id, data)
 }
 
 // DeleteTexture : DELETE /me/planet/texture, retour à la roche par défaut
 func (h userHandler) DeleteTexture(writer http.ResponseWriter, request *http.Request) {
-	user, ok := currentUser(writer, request)
+	id, ok := h.planetOwner(writer, request)
 	if !ok {
 		return
 	}
-	h.saveTexture(writer, request, user.ID, nil)
+	h.saveTexture(writer, request, id, nil)
 }
 
 func (h userHandler) saveTexture(writer http.ResponseWriter, request *http.Request, id int64, data []byte) {
@@ -402,6 +454,10 @@ func (h userHandler) Delete(writer http.ResponseWriter, request *http.Request) {
 	}
 	if target.Username == "internal-clock" {
 		http.Error(writer, "The internal clock user cannot be deleted", http.StatusBadRequest)
+		return
+	}
+	if target.IsNPC {
+		http.Error(writer, "The NPC cannot be deleted", http.StatusBadRequest)
 		return
 	}
 
