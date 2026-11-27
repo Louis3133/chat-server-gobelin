@@ -21,11 +21,11 @@
         <textarea v-model="draft.bio" class="planet-settings__field text-body pixel-scroll" placeholder="Ta bio" maxlength="500" :rows="xs ? 3 : 6" :readonly="saving" />
       </label>
       <div v-if="!npc" class="planet-settings__row" title="Ton anniversaire">
-        <v-icon class="planet-settings__icon" icon="mdi-cake-variant-outline" />
+        <img class="pixel-icon" src="/icons/actions/balloon.svg" alt="Anniversaire">
         <BirthdayField v-model="draftBirthday" class="planet-settings__field text-body" :disabled="saving" />
       </div>
       <label v-else class="planet-settings__row planet-settings__row--bio">
-        <v-icon class="planet-settings__icon" icon="mdi-cake-variant-outline" title="Lettre d'anniversaire" />
+        <img class="pixel-icon" src="/icons/actions/balloon.svg" alt="Lettre d'anniversaire" title="Lettre d'anniversaire">
         <textarea v-model="draftLetter" class="planet-settings__field text-body pixel-scroll" placeholder="Lettre d'anniversaire" maxlength="600" :rows="xs ? 3 : 5" :readonly="saving" />
       </label>
       <p v-if="npc" class="planet-settings__hint text-body">Envoyée en fusée à chaque anniversaire, {pseudo} devient le nom de la personne.</p>
@@ -454,12 +454,6 @@ const status = (m: Message) => {
 .planet-settings__row .pixel-icon {
   width: 32px;
   height: 32px;
-}
-
-.planet-settings__icon {
-  flex: none;
-  width: 32px;
-  font-size: 32px;
 }
 
 .planet-settings__hint {
