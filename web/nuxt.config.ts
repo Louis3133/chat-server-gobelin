@@ -4,6 +4,11 @@ export default defineNuxtConfig({
   devtools: { enabled: false },
   css: ['@mdi/font/css/materialdesignicons.min.css', '~/assets/css/fonts.css', '~/assets/css/typography.css', '~/assets/css/ui-kit.css'],
   ssr: false,
+  app: {
+    head: {
+      link: [{ rel: 'icon', type: 'image/png', href: '/favicon.png' }],
+    },
+  },
   modules: ['vuetify-nuxt-module'],
   runtimeConfig: {
     public: {
